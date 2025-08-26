@@ -9,6 +9,7 @@ interface UIState {
   
   // Navigation state
   sidebarOpen: boolean
+  sidebarCollapsed: boolean
   
   // Loading states
   pageLoading: boolean
@@ -18,6 +19,8 @@ interface UIState {
   setTheme: (theme: Theme) => void
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
+  toggleSidebarCollapse: () => void
+  setSidebarCollapsed: (collapsed: boolean) => void
   setPageLoading: (loading: boolean) => void
 }
 
@@ -26,6 +29,7 @@ export const useUIStore = create<UIState>()(persist(
     // Initial state
     theme: 'dark',
     sidebarOpen: false,
+    sidebarCollapsed: false,
     pageLoading: false,
 
     // Toggle theme between light and dark
@@ -64,6 +68,16 @@ export const useUIStore = create<UIState>()(persist(
       set({ sidebarOpen: open })
     },
 
+    // Toggle sidebar collapse
+    toggleSidebarCollapse: () => {
+      set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed }))
+    },
+
+    // Set sidebar collapsed state
+    setSidebarCollapsed: (collapsed: boolean) => {
+      set({ sidebarCollapsed: collapsed })
+    },
+
     // Set page loading state
     setPageLoading: (loading: boolean) => {
       set({ pageLoading: loading })
@@ -73,7 +87,8 @@ export const useUIStore = create<UIState>()(persist(
     name: 'soulnet-ui',
     partialize: (state) => ({ 
       theme: state.theme,
-      sidebarOpen: state.sidebarOpen
+      sidebarOpen: state.sidebarOpen,
+      sidebarCollapsed: state.sidebarCollapsed
     })
   }
 ))

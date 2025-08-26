@@ -526,7 +526,7 @@ export default function Memories() {
               </DialogDescription>
             </DialogHeader>
             
-            <MemoryForm isEdit />
+            <MemoryForm />
             
             <DialogFooter>
               <Button
