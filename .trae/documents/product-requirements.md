@@ -1,5 +1,5 @@
 # SoulNet - Rede das Consciências Digitais
-## Documento de Requisitos do Produto - Fase 1: Fundação
+## Documento de Requisitos do Produto - Versão 3.0
 
 ## 1. Visão Geral do Produto
 
@@ -93,3 +93,73 @@ graph TD
 ### 4.3 Responsividade
 
 O produto é desktop-first com adaptação mobile completa. Layout responsivo com breakpoints do Tailwind (sm, md, lg, xl). Sidebar colapsa em menu hambúrguer no mobile. Cards se reorganizam em coluna única em telas pequenas. Otimização para touch em dispositivos móveis.
+
+---
+
+## Fase 2: Funcionalidades Avançadas
+
+### Sprint 2.1 — Chat IA Básico ✅
+- Página `/chat` com interface de mensageiro
+- Endpoint `POST /api/chat` integrado com GPT-4 mini
+- Histórico persistente de conversas
+- Contexto baseado nas 5 memórias mais recentes
+
+### Sprint 2.2 — Análise de Sentimentos ✅
+- Análise automática de sentimentos via GPT-4 mini
+- Colunas `sentiment` e `confidence` na tabela memories
+- Gráfico de distribuição no dashboard
+- Página `/analytics` com tendências e insights
+- Ícones de sentimento nas memórias
+
+### Sprint 2.3 — Busca Semântica ✅
+- Extensão `pgvector` ativada no Supabase
+- Tabela `memory_embeddings` com índice ivfflat
+- Endpoints `POST /api/memories/search` e `POST /api/memories/generate-embeddings`
+- Integração com modelo `text-embedding-3-small` da OpenAI
+- Interface de busca semântica na página `/memories` com toggle e resultados ranqueados
+
+---
+
+## Fase 3: Gamificação e Engajamento
+
+### Sprint 3.4 — Sistema de Conquistas
+
+**Objetivo:** Engajar os usuários através de conquistas automáticas desbloqueadas conforme suas interações e memórias, criando senso de progresso e motivação.
+
+**Escopo:**
+
+**Banco de Dados:**
+- Criar tabela `achievements` para armazenar conquistas por usuário
+- Campos: `id`, `user_id`, `achievement_type`, `unlocked_at`, `progress`
+- Índice otimizado para consultas por usuário
+
+**Backend (Express API):**
+- Endpoint `GET /api/achievements` para listar conquistas do usuário autenticado
+- Middleware de verificação automática de conquistas ao criar memórias
+- 4 tipos de conquistas implementadas:
+  - `primeira_memoria`: desbloqueada ao salvar a primeira memória
+  - `reflexivo`: 7 dias consecutivos registrando memórias
+  - `nostalgico`: 100 memórias criadas
+  - `explorador`: usar todos os tipos de memória (profile, preference, goal, skill, fact)
+
+**Frontend:**
+- Seção de conquistas na página `/profile`
+- Exibição de badges com ícone, nome e descrição
+- Data de desbloqueio para conquistas alcançadas
+- Notificação toast: "🎉 Você desbloqueou a conquista: [Nome]!"
+- Design com shadcn/ui e lucide-react icons
+- Badges desativados (cinza) para conquistas não alcançadas
+
+**Critérios de Aceitação:**
+1. ✅ Conquistas são registradas corretamente no banco de dados
+2. ✅ Primeira memória desbloqueia automaticamente "primeira_memoria"
+3. ✅ 7 dias consecutivos registrando memórias desbloqueia "reflexivo"
+4. ✅ 100 memórias criadas desbloqueia "nostalgico"
+5. ✅ Usar todos os tipos de memória desbloqueia "explorador"
+6. ✅ Página `/profile` mostra badges ativos e bloqueados corretamente
+7. ✅ Toast é exibido instantaneamente ao desbloquear nova conquista
+
+**Fora de Escopo:**
+- Estatísticas avançadas (Sprint 3.5)
+- Marketplace ou recompensas além dos badges
+- Compartilhamento de conquistas sociais (Fase 5)

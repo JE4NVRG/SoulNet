@@ -6,6 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Doughnut } from 'react-chartjs-2'
+import {
+  Chart as ChartJS,
+  ArcElement,
+  Tooltip,
+  Legend,
+} from 'chart.js'
+import type { SentimentStats } from '@/types/api'
 import { 
   Brain, 
   Database, 
@@ -15,8 +23,12 @@ import {
   Calendar,
   Sparkles,
   ArrowRight,
-  Loader2
+  Loader2,
+  BarChart3
 } from 'lucide-react'
+
+// Register Chart.js components
+ChartJS.register(ArcElement, Tooltip, Legend)
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -27,6 +39,12 @@ export default function Dashboard() {
     totalMemories: 0,
     recentMemories: 0,
     memoryTypes: {} as Record<string, number>
+  })
+  const [sentimentStats, setSentimentStats] = useState<SentimentStats>({
+    positive: 0,
+    negative: 0,
+    neutral: 0,
+    total: 0
   })
   
   // Redirect if not authenticated
@@ -58,11 +76,20 @@ export default function Dashboard() {
         return acc
       }, {} as Record<string, number>)
       
+      const sentiments = { positive: 0, negative: 0, neutral: 0, total: memories.length }
+      memories.forEach(memory => {
+        if (memory.sentiment) {
+          sentiments[memory.sentiment as keyof Omit<typeof sentiments, 'total'>]++
+        }
+      })
+      
       setStats({
         totalMemories: memories.length,
         recentMemories: recentCount,
         memoryTypes: typeCount
       })
+      
+      setSentimentStats(sentiments)
     }
   }, [memories])
   
@@ -284,50 +311,86 @@ export default function Dashboard() {
             </CardContent>
           </Card>
           
-          {/* Memory Types Overview */}
+          {/* Sentiment Analysis Overview */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                <Sparkles className="mr-2 h-5 w-5" />
-                Memory Distribution
+                <BarChart3 className="mr-2 h-5 w-5" />
+                Sentiment Distribution
               </CardTitle>
               <CardDescription>
-                Types of memories in your consciousness
+                Emotional analysis of your memories
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {Object.keys(stats.memoryTypes).length > 0 ? (
+              {stats.totalMemories > 0 ? (
                 <div className="space-y-4">
-                  {Object.entries(stats.memoryTypes).map(([type, count]) => (
-                    <div key={type} className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <Badge 
-                          variant="secondary" 
-                          className={getMemoryTypeColor(type)}
-                        >
-                          {type}
-                        </Badge>
-                        <span className="text-sm capitalize">{type}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-20 bg-muted rounded-full h-2">
-                          <div 
-                            className="bg-primary h-2 rounded-full transition-all"
-                            style={{ 
-                              width: `${(count / stats.totalMemories) * 100}%` 
-                            }}
-                          />
-                        </div>
-                        <span className="text-sm font-medium w-8 text-right">{count}</span>
-                      </div>
+                  <div className="w-64 h-64 mx-auto">
+                    <Doughnut
+                      data={{
+                        labels: ['Positive', 'Neutral', 'Negative'],
+                        datasets: [
+                          {
+                            data: [
+                              sentimentStats.positive,
+                              sentimentStats.neutral,
+                              sentimentStats.negative,
+                            ],
+                            backgroundColor: [
+                              '#10b981', // green for positive
+                              '#6b7280', // gray for neutral
+                              '#ef4444', // red for negative
+                            ],
+                            borderWidth: 2,
+                            borderColor: '#ffffff',
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                          legend: {
+                            position: 'bottom' as const,
+                          },
+                          tooltip: {
+                            callbacks: {
+                              label: (context) => {
+                                const label = context.label || ''
+                                const value = context.parsed
+                                const total = sentimentStats.positive + sentimentStats.neutral + sentimentStats.negative
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0'
+                                return `${label}: ${value} (${percentage}%)`
+                              },
+                            },
+                          },
+                        },
+                      }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="space-y-1">
+                      <div className="text-2xl font-bold text-green-600">😊</div>
+                      <div className="text-sm font-medium">{sentimentStats.positive}</div>
+                      <div className="text-xs text-muted-foreground">Positive</div>
                     </div>
-                  ))}
+                    <div className="space-y-1">
+                      <div className="text-2xl font-bold text-gray-600">😐</div>
+                      <div className="text-sm font-medium">{sentimentStats.neutral}</div>
+                      <div className="text-xs text-muted-foreground">Neutral</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-2xl font-bold text-red-600">😞</div>
+                      <div className="text-sm font-medium">{sentimentStats.negative}</div>
+                      <div className="text-xs text-muted-foreground">Negative</div>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <Brain className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-muted-foreground mb-4">
-                    Your memory distribution will appear here once you add memories.
+                    Your sentiment analysis will appear here once you add memories.
                   </p>
                   <Button onClick={() => navigate('/memories')}>
                     <Plus className="mr-2 h-4 w-4" />

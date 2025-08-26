@@ -55,6 +55,7 @@ export interface HealthResponse {
 export interface MemoryResponse {
   id: string
   success: boolean
+  newAchievements?: AchievementType[]
 }
 
 export interface MemoriesListResponse {
@@ -157,4 +158,36 @@ export interface MemoryEmbedding {
   embedding: number[]
   created_at: string
   updated_at: string
+}
+
+// Achievement types
+export type AchievementType = 'primeira_memoria' | 'reflexivo' | 'nostalgico' | 'explorador'
+
+export interface Achievement {
+  id: string
+  user_id: string
+  achievement_type: AchievementType
+  unlocked_at: string | null
+  progress: number
+  created_at: string
+}
+
+export interface AchievementDefinition {
+  type: AchievementType
+  name: string
+  description: string
+  icon: string
+  requirement: string
+  maxProgress: number
+}
+
+export interface AchievementResponse {
+  achievements: Achievement[]
+  definitions: AchievementDefinition[]
+}
+
+export interface UnlockedAchievement {
+  type: AchievementType
+  isNew: boolean
+  progress: number
 }

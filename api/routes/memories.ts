@@ -1,9 +1,10 @@
 import express, { type Request, type Response } from 'express'
-import { supabaseServer, getUserFromRequest } from '../../src/lib/supabaseServer.js'
-import type { CreateMemoryRequest, UpdateMemoryRequest, GetMemoriesRequest, MemoryResponse, MemoriesListResponse, SentimentAnalysis, SemanticSearchRequest, SemanticSearchResponse, GenerateEmbeddingsRequest } from '../../src/types/api.js'
-import type { Json } from '../../src/types/database.js'
+import { supabaseServer, getUserFromRequest } from '../../src/lib/supabaseServer'
+import type { CreateMemoryRequest, UpdateMemoryRequest, GetMemoriesRequest, MemoryResponse, MemoriesListResponse, SentimentAnalysis, SemanticSearchRequest, SemanticSearchResponse, GenerateEmbeddingsRequest } from '../../src/types/api'
+import type { Json } from '../../src/types/database'
 import OpenAI from 'openai'
 import dotenv from 'dotenv'
+import { checkAndUnlockAchievements } from '../middleware/achievements'
 
 dotenv.config()
 
@@ -193,9 +194,20 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
       })
     }
     
+    // Check and unlock achievements after creating memory
+    let newAchievements: any[] = [];
+    try {
+      const achievementResults = await checkAndUnlockAchievements(user.id);
+      newAchievements = achievementResults.filter(result => result.isNew);
+    } catch (error) {
+      console.error('Error checking achievements:', error);
+      // Don't fail the memory creation if achievement check fails
+    }
+
     const response: MemoryResponse = {
       id: memory.id,
-      success: true
+      success: true,
+      newAchievements: newAchievements.map(a => a.type)
     }
     
     res.status(201).json(response)

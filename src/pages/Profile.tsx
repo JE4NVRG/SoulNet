@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useUIStore } from '@/store/uiStore'
 import { useMemoriesStore } from '@/store/memoriesStore'
+import { useAchievements } from '@/hooks/useAchievements'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,6 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { AchievementBadge } from '@/components/AchievementBadge'
 import { 
   User, 
   ArrowLeft, 
@@ -26,7 +28,8 @@ import {
   Mail,
   Shield,
   Calendar,
-  Brain
+  Brain,
+  Trophy
 } from 'lucide-react'
 
 export default function Profile() {
@@ -34,6 +37,15 @@ export default function Profile() {
   const { user, isAuthenticated, logout } = useAuthStore()
   const { theme, toggleTheme } = useUIStore()
   const { memories, fetchMemories } = useMemoriesStore()
+  const { 
+    definitions, 
+    isLoading: achievementsLoading, 
+    getAchievementProgress, 
+    isAchievementUnlocked, 
+    getUnlockedDate, 
+    getUnlockedCount, 
+    getTotalCount 
+  } = useAchievements()
   
   const [isEditing, setIsEditing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -386,6 +398,69 @@ export default function Profile() {
                     ))}
                   </div>
                 </>
+              )}
+            </CardContent>
+          </Card>
+          
+          {/* Achievements */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center">
+                    <Trophy className="mr-2 h-5 w-5" />
+                    Conquistas
+                  </CardTitle>
+                  <CardDescription>
+                    Suas conquistas e progresso no SoulNet
+                  </CardDescription>
+                </div>
+                
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-primary">
+                    {getUnlockedCount()}/{getTotalCount()}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Desbloqueadas</p>
+                </div>
+              </div>
+            </CardHeader>
+            
+            <CardContent>
+              {achievementsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <span className="ml-2 text-muted-foreground">Carregando conquistas...</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {definitions.map((definition) => {
+                    const isUnlocked = isAchievementUnlocked(definition.type)
+                    const unlockedDate = getUnlockedDate(definition.type)
+                    const progress = getAchievementProgress(definition.type)
+                    
+                    return (
+                      <AchievementBadge
+                        key={definition.type}
+                        definition={definition}
+                        isUnlocked={isUnlocked}
+                        unlockedDate={unlockedDate}
+                        progress={progress}
+                      />
+                    )
+                  })}
+                </div>
+              )}
+              
+              {getUnlockedCount() === 0 && !achievementsLoading && (
+                <div className="text-center py-8">
+                  <Trophy className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="font-medium text-muted-foreground mb-2">
+                    Nenhuma conquista desbloqueada ainda
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Comece criando suas primeiras memórias para desbloquear conquistas!
+                  </p>
+                </div>
               )}
             </CardContent>
           </Card>

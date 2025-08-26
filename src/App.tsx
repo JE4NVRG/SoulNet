@@ -8,6 +8,7 @@ import Dashboard from '@/pages/Dashboard'
 import Memories from '@/pages/Memories'
 import Profile from '@/pages/Profile'
 import Chat from '@/pages/Chat'
+import Analytics from '@/pages/Analytics'
 import Header from '@/components/Header'
 import Sidebar from '@/components/Sidebar'
 import { Toaster } from '@/components/ui/sonner'
@@ -147,6 +148,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <Chat />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="/analytics" 
+            element={
+              <ProtectedRoute>
+                <Analytics />
               </ProtectedRoute>
             } 
           />

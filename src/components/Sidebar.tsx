@@ -86,7 +86,7 @@ export default function Sidebar({ className = '' }: SidebarProps) {
       href: '/analytics',
       icon: BarChart3,
       current: location.pathname === '/analytics',
-      disabled: true,
+      disabled: false,
     },
     {
       name: 'Settings',

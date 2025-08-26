@@ -1,5 +1,7 @@
 import { create } from 'zustand'
-import type { Memory, CreateMemoryRequest, UpdateMemoryRequest, GetMemoriesRequest, MemoryType } from '../types/api'
+import type { Memory, CreateMemoryRequest, UpdateMemoryRequest, GetMemoriesRequest, MemoryType, MemoryResponse } from '../types/api'
+import { toast } from 'sonner'
+import { Trophy } from 'lucide-react'
 
 interface MemoriesState {
   // State
@@ -95,7 +97,24 @@ export const useMemoriesStore = create<MemoriesState>()((set, get) => ({
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
       }
       
-      await response.json()
+      const data: MemoryResponse = await response.json()
+      
+      // Show achievement notifications if any new achievements were unlocked
+      if (data.newAchievements && data.newAchievements.length > 0) {
+        data.newAchievements.forEach(achievementType => {
+          const achievementNames = {
+            'primeira_memoria': 'Primeira Memória',
+            'reflexivo': 'Reflexivo',
+            'nostalgico': 'Nostálgico',
+            'explorador': 'Explorador'
+          }
+          
+          toast.success(`🏆 Conquista desbloqueada: ${achievementNames[achievementType]}!`, {
+            description: 'Parabéns! Você desbloqueou uma nova conquista.',
+            duration: 5000,
+          })
+        })
+      }
       
       // Refresh memories list after creation
       await get().fetchMemories({ type: get().currentType || undefined })
