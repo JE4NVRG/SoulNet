@@ -38,6 +38,8 @@ export interface Database {
           content: string
           importance: number
           source: Json
+          sentiment: 'positive' | 'negative' | 'neutral'
+          confidence: number
           created_at: string
         }
         Insert: {
@@ -47,6 +49,8 @@ export interface Database {
           content: string
           importance?: number
           source?: Json
+          sentiment?: 'positive' | 'negative' | 'neutral'
+          confidence?: number
           created_at?: string
         }
         Update: {
@@ -56,6 +60,8 @@ export interface Database {
           content?: string
           importance?: number
           source?: Json
+          sentiment?: 'positive' | 'negative' | 'neutral'
+          confidence?: number
           created_at?: string
         }
         Relationships: [
@@ -103,12 +109,63 @@ export interface Database {
           }
         ]
       }
+      memory_embeddings: {
+        Row: {
+          id: string
+          memory_id: string
+          embedding: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          memory_id: string
+          embedding: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          memory_id?: string
+          embedding?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memory_embeddings_memory_id_fkey"
+            columns: ["memory_id"]
+            isOneToOne: false
+            referencedRelation: "memories"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      semantic_search_memories: {
+        Args: {
+          query_embedding: string
+          match_threshold: number
+          match_count: number
+          user_id: string
+        }
+        Returns: {
+          id: string
+          user_id: string
+          type: 'profile' | 'preference' | 'goal' | 'skill' | 'fact'
+          content: string
+          importance: number
+          source: Json
+          sentiment: 'positive' | 'negative' | 'neutral'
+          confidence: number
+          created_at: string
+          similarity: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

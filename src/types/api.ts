@@ -17,6 +17,27 @@ export type InteractionUpdate = Database['public']['Tables']['interactions']['Up
 
 // Memory types
 export type MemoryType = 'profile' | 'preference' | 'goal' | 'skill' | 'fact'
+export type SentimentType = 'positive' | 'negative' | 'neutral'
+
+// Sentiment analysis types
+export interface SentimentAnalysis {
+  sentiment: SentimentType
+  confidence: number
+}
+
+export interface SentimentStats {
+  positive: number
+  negative: number
+  neutral: number
+  total: number
+}
+
+export interface SentimentTrend {
+  date: string
+  positive: number
+  negative: number
+  neutral: number
+}
 
 // API Response types
 export interface ApiResponse<T = unknown> {
@@ -104,4 +125,36 @@ export interface AuthUser {
   id: string
   email: string
   displayName?: string
+}
+
+// Semantic search types
+export interface SemanticSearchRequest {
+  query: string
+  k?: number
+}
+
+export interface SemanticSearchResponse {
+  memories: Array<Memory & { similarity: number }>
+  query: string
+  total: number
+}
+
+export interface GenerateEmbeddingsRequest {
+  ids: string[]
+}
+
+export interface GenerateEmbeddingsResponse {
+  success: boolean
+  processed: number
+  failed: number
+  errors: string[]
+}
+
+// Memory embedding types
+export interface MemoryEmbedding {
+  id: string
+  memory_id: string
+  embedding: number[]
+  created_at: string
+  updated_at: string
 }
