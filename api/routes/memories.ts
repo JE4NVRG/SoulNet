@@ -1,7 +1,62 @@
 import express, { type Request, type Response } from 'express'
 import { supabaseServer, getUserFromRequest } from '../../src/lib/supabaseServer.js'
-import type { CreateMemoryRequest, UpdateMemoryRequest, GetMemoriesRequest, MemoryResponse, MemoriesListResponse } from '../../src/types/api.js'
+import type { CreateMemoryRequest, UpdateMemoryRequest, GetMemoriesRequest, MemoryResponse, MemoriesListResponse, SentimentAnalysis, SemanticSearchRequest, SemanticSearchResponse, GenerateEmbeddingsRequest } from '../../src/types/api.js'
 import type { Json } from '../../src/types/database.js'
+import OpenAI from 'openai'
+import dotenv from 'dotenv'
+
+dotenv.config()
+
+// Initialize OpenAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
+
+// Sentiment analysis function
+async function analyzeSentiment(content: string): Promise<SentimentAnalysis> {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `Analise o sentimento do texto fornecido e retorne APENAS um JSON válido no formato:
+{"sentiment": "positive|negative|neutral", "confidence": 0.95}
+
+Onde:
+- sentiment: "positive" para sentimentos positivos, "negative" para negativos, "neutral" para neutros
+- confidence: número entre 0.0 e 1.0 indicando a confiança da análise
+
+Não inclua explicações, apenas o JSON.`
+        },
+        {
+          role: 'user',
+          content: content
+        }
+      ],
+      max_tokens: 50,
+      temperature: 0.1,
+    })
+
+    const result = completion.choices[0]?.message?.content?.trim()
+    if (!result) {
+      return { sentiment: 'neutral', confidence: 0.5 }
+    }
+
+    try {
+      const parsed = JSON.parse(result)
+      return {
+        sentiment: parsed.sentiment || 'neutral',
+        confidence: Math.min(Math.max(parsed.confidence || 0.5, 0.0), 1.0)
+      }
+    } catch {
+      return { sentiment: 'neutral', confidence: 0.5 }
+    }
+  } catch (error) {
+    console.error('Error analyzing sentiment:', error)
+    return { sentiment: 'neutral', confidence: 0.5 }
+  }
+}
 
 type AuthenticatedRequest = Request & { user: { id: string; email: string } }
 
@@ -111,8 +166,11 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
         error: 'Importance must be between 1 and 5'
       })
     }
-    
-    // Create memory
+
+    // Analyze sentiment
+    const sentimentAnalysis = await analyzeSentiment(content)
+
+    // Create memory with sentiment analysis
     const { data: memory, error } = await supabaseServer
       .from('memories')
       .insert({
@@ -120,7 +178,9 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
         type,
         content,
         importance,
-        source: source as Json
+        source: source as Json,
+        sentiment: sentimentAnalysis.sentiment,
+        confidence: sentimentAnalysis.confidence
       })
       .select()
       .single()
@@ -290,6 +350,180 @@ router.delete('/:id', requireAuth, async (req: Request, res: Response) => {
     })
   } catch (error) {
     console.error('Error deleting memory:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    })
+  }
+})
+
+// POST /api/memories/search - Semantic search using embeddings
+router.post('/search', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = (req as AuthenticatedRequest).user
+    const { query, k = 10 } = req.body as SemanticSearchRequest
+    
+    if (!query || !query.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Query is required'
+      })
+    }
+    
+    // Validate k parameter
+    const limitNum = Math.min(50, Math.max(1, Number(k)))
+    
+    try {
+      // Generate embedding for the search query
+      const embeddingResponse = await openai.embeddings.create({
+        model: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
+        input: query.trim(),
+      })
+      
+      const queryEmbedding = embeddingResponse.data[0]?.embedding
+      if (!queryEmbedding) {
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to generate query embedding'
+        })
+      }
+      
+      // Perform semantic search using cosine similarity
+      const threshold = parseFloat(process.env.SEMANTIC_SEARCH_THRESHOLD || '0.75')
+      
+      const { data: results, error } = await supabaseServer.rpc('semantic_search_memories', {
+        query_embedding: JSON.stringify(queryEmbedding),
+        match_threshold: threshold,
+        match_count: limitNum,
+        user_id: user.id
+      })
+      
+      if (error) {
+        console.error('Semantic search error:', error)
+        return res.status(500).json({
+          success: false,
+          error: 'Semantic search failed'
+        })
+      }
+      
+      const response: SemanticSearchResponse = {
+        memories: results || [],
+        query,
+        total: results?.length || 0
+      }
+      
+      res.json(response)
+    } catch (embeddingError) {
+      console.error('Error generating embedding:', embeddingError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to process search query'
+      })
+    }
+  } catch (error) {
+    console.error('Error in semantic search:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    })
+  }
+})
+
+// POST /api/memories/generate-embeddings - Generate embeddings for existing memories
+router.post('/generate-embeddings', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = (req as AuthenticatedRequest).user
+    const { ids } = req.body as GenerateEmbeddingsRequest
+    
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Memory IDs array is required'
+      })
+    }
+    
+    // Limit batch size to prevent timeout
+    if (ids.length > 50) {
+      return res.status(400).json({
+        success: false,
+        error: 'Maximum 50 memories can be processed at once'
+      })
+    }
+    
+    // Fetch memories that belong to the user
+    const { data: memories, error: fetchError } = await supabaseServer
+      .from('memories')
+      .select('id, content')
+      .eq('user_id', user.id)
+      .in('id', ids)
+    
+    if (fetchError) {
+      console.error('Error fetching memories:', fetchError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch memories'
+      })
+    }
+    
+    if (!memories || memories.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No memories found'
+      })
+    }
+    
+    const results = {
+      processed: 0,
+      failed: 0,
+      errors: [] as string[]
+    }
+    
+    // Process each memory
+    for (const memory of memories) {
+      try {
+        // Generate embedding
+        const embeddingResponse = await openai.embeddings.create({
+          model: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
+          input: memory.content,
+        })
+        
+        const embedding = embeddingResponse.data[0]?.embedding
+        if (!embedding) {
+          results.failed++
+          results.errors.push(`Failed to generate embedding for memory ${memory.id}`)
+          continue
+        }
+        
+        // Insert or update embedding
+        const { error: upsertError } = await supabaseServer
+          .from('memory_embeddings')
+          .upsert({
+            memory_id: memory.id,
+            embedding: JSON.stringify(embedding)
+          }, {
+            onConflict: 'memory_id'
+          })
+        
+        if (upsertError) {
+          console.error(`Error saving embedding for memory ${memory.id}:`, upsertError)
+          results.failed++
+          results.errors.push(`Failed to save embedding for memory ${memory.id}`)
+        } else {
+          results.processed++
+        }
+      } catch (error) {
+        console.error(`Error processing memory ${memory.id}:`, error)
+        results.failed++
+        results.errors.push(`Error processing memory ${memory.id}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    }
+    
+    res.json({
+      success: true,
+      ...results
+    })
+  } catch (error) {
+    console.error('Error generating embeddings:', error)
     res.status(500).json({
       success: false,
       error: 'Internal server error'
