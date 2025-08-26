@@ -101,23 +101,19 @@ export default function Header({ className = '' }: HeaderProps) {
   ]
 
   return (
-    <header className={`sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 ${className}`}>
-      <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between">
-          {/* Left side - Logo and Navigation */}
+    <header className={`fixed top-0 z-50 w-full h-16 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 ${className}`}>
+      <div className="container mx-auto px-4 h-full">
+        <div className="flex h-full items-center justify-between">
+          {/* Left side - Sidebar toggle and Logo */}
           <div className="flex items-center space-x-4">
-            {/* Mobile menu button */}
+            {/* Mobile sidebar toggle */}
             <Button
               variant="ghost"
               size="sm"
               className="md:hidden"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              onClick={toggleSidebar}
             >
-              {mobileMenuOpen ? (
-                <X className="h-5 w-5" />
-              ) : (
-                <Menu className="h-5 w-5" />
-              )}
+              <Menu className="h-5 w-5" />
             </Button>
 
             {/* Desktop sidebar toggle */}
@@ -130,7 +126,7 @@ export default function Header({ className = '' }: HeaderProps) {
               <Menu className="h-5 w-5" />
             </Button>
 
-            {/* Logo */}
+            {/* Main Logo - Single display */}
             <Link to="/dashboard" className="flex items-center space-x-2">
               <Brain className="h-8 w-8 text-primary" />
               <div className="hidden sm:block">
@@ -142,44 +138,21 @@ export default function Header({ className = '' }: HeaderProps) {
                 </div>
               </div>
             </Link>
-
-            {/* Desktop Navigation */}
-            <nav className="hidden lg:flex items-center space-x-1 ml-8">
-              {navigationItems.map((item) => {
-                const Icon = item.icon
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      item.disabled
-                        ? 'text-muted-foreground cursor-not-allowed'
-                        : item.current
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                    }`}
-                    onClick={(e) => item.disabled && e.preventDefault()}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{item.name}</span>
-                    {item.disabled && (
-                      <Badge variant="secondary" className="text-xs">
-                        Soon
-                      </Badge>
-                    )}
-                  </Link>
-                )
-              })}
-            </nav>
           </div>
 
-          {/* Center - Page Title (Mobile) */}
+          {/* Center - Page Title (Mobile only) */}
           <div className="flex-1 text-center md:hidden">
             <h1 className="text-lg font-semibold">{getPageTitle()}</h1>
           </div>
 
-          {/* Right side - Theme toggle, Notifications, User menu */}
+          {/* Right side - Notifications, Theme toggle, User avatar */}
           <div className="flex items-center space-x-2">
+            {/* Notifications */}
+            <Button variant="ghost" size="sm" className="relative hidden sm:flex">
+              <Bell className="h-4 w-4" />
+              <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
+            </Button>
+
             {/* Theme toggle */}
             <Button
               variant="ghost"
@@ -194,13 +167,7 @@ export default function Header({ className = '' }: HeaderProps) {
               )}
             </Button>
 
-            {/* Notifications */}
-            <Button variant="ghost" size="sm" className="relative hidden sm:flex">
-              <Bell className="h-4 w-4" />
-              <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
-            </Button>
-
-            {/* User menu */}
+            {/* User Avatar Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -229,14 +196,6 @@ export default function Header({ className = '' }: HeaderProps) {
                   <span>Profile</span>
                 </DropdownMenuItem>
                 
-                <DropdownMenuItem onClick={() => navigate('/settings')} disabled>
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Settings</span>
-                  <Badge variant="secondary" className="ml-auto text-xs">
-                    Soon
-                  </Badge>
-                </DropdownMenuItem>
-                
                 {/* Mobile theme toggle */}
                 <DropdownMenuItem onClick={toggleTheme} className="sm:hidden">
                   {theme === 'dark' ? (
@@ -258,44 +217,7 @@ export default function Header({ className = '' }: HeaderProps) {
           </div>
         </div>
 
-        {/* Mobile Navigation Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t bg-background">
-            <nav className="px-2 pt-2 pb-3 space-y-1">
-              {navigationItems.map((item) => {
-                const Icon = item.icon
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    className={`flex items-center space-x-3 px-3 py-2 rounded-md text-base font-medium transition-colors ${
-                      item.disabled
-                        ? 'text-muted-foreground cursor-not-allowed'
-                        : item.current
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                    }`}
-                    onClick={(e) => {
-                      if (item.disabled) {
-                        e.preventDefault()
-                      } else {
-                        setMobileMenuOpen(false)
-                      }
-                    }}
-                  >
-                    <Icon className="h-5 w-5" />
-                    <span>{item.name}</span>
-                    {item.disabled && (
-                      <Badge variant="secondary" className="ml-auto text-xs">
-                        Soon
-                      </Badge>
-                    )}
-                  </Link>
-                )
-              })}
-            </nav>
-          </div>
-        )}
+
       </div>
     </header>
   )
