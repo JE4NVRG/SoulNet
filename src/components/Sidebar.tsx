@@ -27,7 +27,8 @@ import {
   ChevronRight,
   LayoutDashboard,
   FileText,
-  X
+  X,
+  MessageCircle
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -64,6 +65,13 @@ export default function Sidebar({ className = '' }: SidebarProps) {
       href: '/memories',
       icon: Brain,
       current: location.pathname === '/memories',
+      disabled: false,
+    },
+    {
+      name: 'Chat IA',
+      href: '/chat',
+      icon: MessageCircle,
+      current: location.pathname === '/chat',
       disabled: false,
     },
     {
