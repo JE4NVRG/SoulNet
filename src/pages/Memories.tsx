@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { 
   Brain, 
   Plus, 
@@ -23,10 +24,11 @@ import {
   Loader2,
   Calendar,
   Star,
-  MoreVertical
+  MoreVertical,
+  Sparkles
 } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import type { CreateMemoryRequest } from '@/types/api'
+import type { CreateMemoryRequest, SemanticSearchRequest, SemanticSearchResponse } from '@/types/api'
 import type { Memory, MemoryType } from '@/types/api'
 
 const MEMORY_TYPES = [
@@ -60,6 +62,9 @@ export default function Memories() {
   } = useMemoriesStore()
   
   const [searchQuery, setSearchQuery] = useState('')
+  const [isSemanticSearch, setIsSemanticSearch] = useState(false)
+  const [semanticResults, setSemanticResults] = useState<Array<Memory & { similarity: number }>>([]) 
+  const [isSearching, setIsSearching] = useState(false)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null)
@@ -85,13 +90,76 @@ export default function Memories() {
     }
   }, [isAuthenticated, fetchMemories])
   
+  // Perform semantic search
+  const performSemanticSearch = async (query: string) => {
+    if (!query.trim()) {
+      setSemanticResults([])
+      return
+    }
+    
+    setIsSearching(true)
+    try {
+      const response = await fetch('/api/memories/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          query: query.trim(),
+          k: 50
+        } as SemanticSearchRequest)
+      })
+      
+      if (!response.ok) {
+        throw new Error('Semantic search failed')
+      }
+      
+      const data: SemanticSearchResponse = await response.json()
+      setSemanticResults(data.memories)
+    } catch (error) {
+      console.error('Semantic search error:', error)
+      setSemanticResults([])
+    } finally {
+      setIsSearching(false)
+    }
+  }
+  
+  // Handle search query changes
+  useEffect(() => {
+    if (isSemanticSearch && searchQuery) {
+      const timeoutId = setTimeout(() => {
+        performSemanticSearch(searchQuery)
+      }, 500) // Debounce search
+      
+      return () => clearTimeout(timeoutId)
+    } else {
+      setSemanticResults([])
+    }
+  }, [searchQuery, isSemanticSearch])
+  
   // Filter memories based on search and type filter
-  const filteredMemories = memories.filter(memory => {
-    const matchesSearch = searchQuery === '' || 
-      memory.content.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesType = typeFilter === 'all' || memory.type === typeFilter
-    return matchesSearch && matchesType
-  })
+  const getDisplayMemories = () => {
+    if (isSemanticSearch && searchQuery.trim()) {
+      // Use semantic search results
+      const filtered = semanticResults.filter(memory => {
+        const matchesType = typeFilter === 'all' || memory.type === typeFilter
+        return matchesType
+      })
+      return filtered
+    } else {
+      // Use traditional search
+      const filtered = memories.filter(memory => {
+        const matchesSearch = searchQuery === '' || 
+          memory.content.toLowerCase().includes(searchQuery.toLowerCase())
+        const matchesType = typeFilter === 'all' || memory.type === typeFilter
+        return matchesSearch && matchesType
+      })
+      return filtered
+    }
+  }
+  
+  const displayMemories = getDisplayMemories()
   
   const validateForm = (data: MemoryFormData): Record<string, string> => {
     const errors: Record<string, string> = {}
@@ -217,6 +285,30 @@ export default function Memories() {
       fact: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-300'
     }
     return colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300'
+  }
+  
+  const getSentimentIcon = (sentiment?: string) => {
+    switch (sentiment) {
+      case 'positive':
+        return '😊'
+      case 'negative':
+        return '😞'
+      case 'neutral':
+      default:
+        return '😐'
+    }
+  }
+  
+  const getSentimentColor = (sentiment?: string) => {
+    switch (sentiment) {
+      case 'positive':
+        return 'text-green-600'
+      case 'negative':
+        return 'text-red-600'
+      case 'neutral':
+      default:
+        return 'text-gray-600'
+    }
   }
   
   const MemoryForm = () => (
@@ -391,37 +483,58 @@ export default function Memories() {
         {/* Filters and Search */}
         <Card className="mb-6">
           <CardContent className="pt-6">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search memories..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col md:flex-row gap-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder={isSemanticSearch ? "Search memories semantically..." : "Search memories..."}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                    {isSearching && (
+                      <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Filter className="h-4 w-4 text-muted-foreground" />
+                  <Select
+                    value={typeFilter}
+                    onValueChange={setTypeFilter}
+                  >
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      {MEMORY_TYPES.map(type => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               
-              <div className="flex items-center space-x-2">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <Select
-                  value={typeFilter}
-                  onValueChange={setTypeFilter}
-                >
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    {MEMORY_TYPES.map(type => (
-                      <SelectItem key={type.value} value={type.value}>
-                        {type.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* Semantic Search Toggle */}
+              <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg">
+                <Sparkles className="h-4 w-4 text-purple-500" />
+                <Label htmlFor="semantic-search" className="text-sm font-medium">
+                  Semantic Search
+                </Label>
+                <Switch
+                  id="semantic-search"
+                  checked={isSemanticSearch}
+                  onCheckedChange={setIsSemanticSearch}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {isSemanticSearch ? 'AI-powered search by meaning' : 'Traditional keyword search'}
+                </span>
               </div>
             </div>
           </CardContent>
@@ -433,7 +546,7 @@ export default function Memories() {
             <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
             <p className="text-muted-foreground">Loading your memories...</p>
           </div>
-        ) : filteredMemories.length === 0 ? (
+        ) : displayMemories.length === 0 ? (
           <Card>
             <CardContent className="text-center py-12">
               <Brain className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -442,7 +555,9 @@ export default function Memories() {
               </h3>
               <p className="text-muted-foreground mb-4">
                 {searchQuery || typeFilter !== 'all' 
-                  ? 'Try adjusting your search or filter criteria.'
+                  ? isSemanticSearch 
+                    ? 'Try different search terms or switch to traditional search.'
+                    : 'Try adjusting your search or filter criteria.'
                   : 'Start building your digital consciousness by adding your first memory.'}
               </p>
               {!searchQuery && typeFilter === 'all' && (
@@ -455,64 +570,88 @@ export default function Memories() {
           </Card>
         ) : (
           <div className="grid gap-4">
-            {filteredMemories.map((memory) => (
-              <Card key={memory.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="pt-6">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center space-x-3">
-                      <Badge 
-                        variant="secondary" 
-                        className={getMemoryTypeColor(memory.type)}
-                      >
-                        {memory.type}
-                      </Badge>
-                      <div className="flex items-center space-x-1">
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <Star
-                            key={i}
-                            className={`w-3 h-3 ${
-                              i < memory.importance
-                                ? 'fill-current text-yellow-400'
-                                : 'text-gray-300'
-                            }`}
-                          />
-                        ))}
+            {displayMemories.map((memory) => {
+              const isSemanticResult = 'similarity' in memory
+              return (
+                <Card key={memory.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center space-x-3 flex-wrap">
+                        <Badge 
+                          variant="secondary" 
+                          className={getMemoryTypeColor(memory.type)}
+                        >
+                          {memory.type}
+                        </Badge>
+                        <div className="flex items-center space-x-2">
+                          <span 
+                            className={`text-lg ${getSentimentColor(memory.sentiment)}`}
+                            title={`Sentiment: ${memory.sentiment || 'neutral'}${memory.confidence ? ` (${Math.round(memory.confidence * 100)}% confidence)` : ''}`}
+                          >
+                            {getSentimentIcon(memory.sentiment)}
+                          </span>
+                          <div className="flex items-center space-x-1">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`w-3 h-3 ${
+                                  i < memory.importance
+                                    ? 'fill-current text-yellow-400'
+                                    : 'text-gray-300'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        {isSemanticResult && (
+                          <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900 dark:text-purple-300">
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            {Math.round((memory as any).similarity * 100)}% match
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <div className="flex items-center text-xs text-muted-foreground">
+                          <Calendar className="mr-1 h-3 w-3" />
+                          {new Date(memory.created_at).toLocaleDateString()}
+                        </div>
+                        
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleEditMemory(memory)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleDeleteMemory(memory.id)}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                     
-                    <div className="flex items-center space-x-2">
-                      <div className="flex items-center text-xs text-muted-foreground">
-                        <Calendar className="mr-1 h-3 w-3" />
-                        {new Date(memory.created_at).toLocaleDateString()}
+                    <p className="text-sm leading-relaxed mb-3">{memory.content}</p>
+                    
+                    {isSemanticResult && (
+                      <div className="flex items-center justify-end text-xs text-purple-600 dark:text-purple-400">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        <span>Semantic match</span>
                       </div>
-                      
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleEditMemory(memory)}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => handleDeleteMemory(memory.id)}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-                  
-                  <p className="text-sm leading-relaxed">{memory.content}</p>
-                </CardContent>
-              </Card>
-            ))}
+                    )}
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         )}
         
