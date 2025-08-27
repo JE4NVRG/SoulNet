@@ -55,11 +55,11 @@ export default defineConfig({
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         swSrc: 'public/sw.js',
-        swDest: 'dist/sw.js'
+        swDest: 'dist/sw.js',
+        rollupFormat: 'iife'
       },
       devOptions: {
-        enabled: true,
-        type: 'module'
+        enabled: true
       }
     }),
   ],
