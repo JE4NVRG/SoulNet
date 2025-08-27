@@ -1,5 +1,5 @@
 # SoulNet - Rede das Consciências Digitais
-## Documento de Requisitos do Produto - Versão 3.1
+## Documento de Requisitos do Produto - Versão 4.1
 
 ## 1. Visão Geral do Produto
 
@@ -201,3 +201,177 @@ O produto é desktop-first com adaptação mobile completa. Layout responsivo co
 - Exportação dos dados (Fase 4)
 - Comparação entre usuários (Fase 5)
 - Insights automáticos da IA (Fase futura)
+
+---
+
+## Fase 4: Progressive Web App (PWA)
+
+### Sprint 4.1 — PWA Core (Install + Offline + Sync básico)
+
+**Objetivo:** Tornar o SoulNet um PWA instalável e resiliente offline com cache de assets, leitura básica offline, fila para criar memórias quando estiver sem conexão, e fundação para push notifications.
+
+**Escopo:**
+
+**1) Manifesto e Metadados:**
+- Arquivo `public/manifest.webmanifest` com configurações PWA:
+  * `name`: "SoulNet - Rede das Consciências Digitais"
+  * `short_name`: "SoulNet"
+  * `start_url`: "/dashboard"
+  * `display`: "standalone"
+  * `theme_color` e `background_color` consistentes com o design
+- Ícones PWA 192x192 e 512x512 pixels (versões dark/light)
+- Metatags no `index.html`: `theme-color`, `apple-touch-icon`, `apple-mobile-web-app-capable`
+
+**2) Service Worker (Workbox):**
+- Implementação em `service-worker.ts` usando Workbox:
+  * Pré-cache do shell da aplicação (build estático do Vite)
+  * Estratégia `CacheFirst` para assets estáticos (.css, .js, fontes, ícones)
+  * Estratégia `StaleWhileRevalidate` para `GET /api/health` e `GET /api/memories`
+  * Background Sync para `POST /api/memories` (fila offline, reenvia quando conexão volta)
+  * Fallback de navegação para `/offline.html` com CTA "Tentar novamente"
+
+**3) Sistema de Instalação:**
+- Prompt customizado de instalação quando `beforeinstallprompt` disparar
+- Banner discreto no header com opção de instalar
+- Página `/settings` com seção "App" mostrando status "Instalado" / "Não instalado"
+- Botão "Instalar App" quando disponível
+
+**4) Push Notifications (Infraestrutura):**
+- Geração e leitura de VAPID keys via variáveis de ambiente:
+  * `VAPID_PUBLIC_KEY`
+  * `VAPID_PRIVATE_KEY`
+- Tabela `user_push_subscriptions` no banco:
+  ```sql
+  CREATE TABLE IF NOT EXISTS user_push_subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, endpoint)
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_push_subscriptions_user ON user_push_subscriptions(user_id);
+  ```
+- Endpoint `POST /api/push/subscribe` protegido por `requireAuth`
+- Service Worker escuta eventos `push` (placeholder: "Registration successful")
+
+**5) Frontend - Indicadores e UX:**
+- Indicadores de conectividade (online/offline) no header
+- Toast amigável quando memória for enfileirada offline: "📱 Memória salva offline"
+- Toast de sincronização: "✅ Memória sincronizada"
+- Página `/settings` com bloco PWA:
+  * Status de instalação
+  * Botão "Instalar App"
+  * Status de notificações push
+
+**6) Backend (Express):**
+- Rota `POST /api/push/subscribe` protegida por `requireAuth`
+- Salva/atualiza inscrição push no banco
+- Sem envio real de push (apenas infraestrutura)
+
+**7) Build e Configuração:**
+- Configuração do Vite para registrar Service Worker
+- Variáveis de ambiente VAPID no `.env.example`
+- Verificação HTTPS em produção (Vercel) para PWA funcionar
+
+**Critérios de Aceitação:**
+1. ✅ App instalável em Chrome/Edge/Android (banner aparece, app abre standalone)
+2. ✅ Sem internet: app abre shell + páginas básicas, GET de memórias retorna cache
+3. ✅ Criar memória offline: entra em fila e sincroniza quando conexão volta
+4. ✅ Service Worker registra sem erros no console
+5. ✅ Subscrição de push salva em `user_push_subscriptions`
+6. ✅ Lighthouse PWA score ≥ 90 (instalável, SW ativo, manifest válido)
+7. ✅ Indicadores de conectividade funcionais
+8. ✅ Toasts de offline/sync aparecem corretamente
+
+**Fora de Escopo (próximas sprints):**
+- Sprint 4.3: Exportar/Excluir Dados (LGPD/GDPR)
+- Sprint 4.4: Push real de lembretes (Web Push com agenda)
+
+**Tecnologias:**
+- Workbox para Service Worker
+- Web App Manifest
+- Background Sync API
+- Push API (infraestrutura)
+- VAPID keys para autenticação push
+
+### Sprint 4.2 — Upload de Mídia (Fotos & Áudio) ✅
+
+**Objetivo:** Permitir que os usuários anexem imagens e áudios às memórias, armazenando no Supabase Storage com compressão e preview integrado.
+
+**Escopo:**
+
+**1) Banco de Dados:**
+- Tabela `memory_media` criada:
+```sql
+CREATE TABLE memory_media (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  memory_id uuid NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  file_url text NOT NULL,
+  file_type text CHECK (file_type IN ('image','audio')),
+  file_size integer,
+  uploaded_at timestamptz DEFAULT now()
+);
+CREATE INDEX idx_memory_media_memory_id ON memory_media(memory_id);
+```
+
+**2) Supabase Storage:**
+- Bucket `media` configurado com regras RLS
+- Acesso restrito: apenas dono pode ler/escrever seus arquivos
+- Compressão automática de imagens antes do upload
+- Tipos aceitos: imagens (jpeg/png/webp) e áudios (mp3/wav)
+
+**3) Backend (Express API):**
+- Endpoint `POST /api/memories/:id/media` protegido:
+  * Validação de `user_id` da memória (não permite upload em memória de outro usuário)
+  * Upload para Supabase Storage bucket `media`
+  * Retorna `{ url, type, size }`
+- Endpoint `GET /api/memories/:id/media`:
+  * Lista arquivos anexados à memória
+  * Filtrado por permissão do usuário
+
+**4) Frontend:**
+- Componente `MediaUpload` na página `/memories`:
+  * Drag & drop para upload de arquivos
+  * Preview inline de imagens
+  * Player básico para áudios
+  * Barra de progresso durante upload
+  * Validações: máx. 5 arquivos por memória, 10MB por arquivo
+- Componente `MediaGallery` nos cards de memória:
+  * Miniaturas clicáveis de imagens (modal com zoom)
+  * Player de áudio embutido
+  * Feedback visual de limite atingido ("5/5 anexos")
+
+**5) UX e Validações:**
+- Toasts de sucesso/erro com detalhes do arquivo
+- Mensagem informativa quando limite de arquivos atingido
+- Feedback visual durante upload com progresso real
+- Validação de tipos de arquivo no frontend e backend
+
+**6) Variáveis de Ambiente:**
+```env
+MAX_FILE_SIZE=10485760   # 10MB
+ALLOWED_FILE_TYPES=image/jpeg,image/png,image/webp,audio/mpeg,audio/wav
+SUPABASE_STORAGE_BUCKET=media
+```
+
+**Critérios de Aceitação:**
+1. ✅ Upload protegido respeitando owner (user_id)
+2. ✅ Apenas imagens (jpeg/png/webp) e áudios (mp3/wav) aceitos
+3. ✅ Preview de imagens e player de áudio funcionais no frontend
+4. ✅ Barra de progresso visível durante upload
+5. ✅ Mensagem de erro se ultrapassar limite de 10MB ou 5 arquivos
+6. ✅ Galeria de mídia integrada aos cards de memória
+7. ✅ Modal de zoom para imagens e controles de áudio
+
+**Fora de Escopo:**
+- Vídeo (Sprint futura)
+- Compressão de áudio avançada
+- Exportação de mídia (Sprint 4.3)
+
+**Tecnologias:**
+- Supabase Storage para armazenamento
+- Multer para upload multipart/form-data
+- Sharp para compressão de imagens (futuro)
+- HTML5 Audio API para player
