@@ -388,21 +388,46 @@ SUPABASE_STORAGE_BUCKET=media
    - Limite de anexos por memória: máximo 5 arquivos
 6. **Configurações de build:** Remoção de configurações inválidas do `tsconfig.json`, otimização de tipos
 
-**Configurações de Alias (se necessário):**
+**Hotfix 4.1.2 - Correções Case-Sensitive e Hooks Offline:**
+
+**Problemas Resolvidos:**
+1. **Case-sensitive no useNetworkStatus:** Confirmado que arquivo `src/hooks/useNetworkStatus.ts` está com nome correto e imports funcionando
+2. **Hook useOfflineSync padronizado:** API completa implementada com:
+   - `online: boolean` - status da conexão
+   - `queueSize: number` - tamanho da fila offline
+   - `hasQueuedItems: boolean` - derivado de `queueSize > 0`
+   - `addToQueue(item)` - adiciona item à fila offline
+   - `enqueue(item)` - alias para `addToQueue`
+   - `flush()` - sincroniza fila quando online
+   - Persistência via `localStorage`
+   - Auto-flush quando conexão volta
+3. **Memories.tsx validado:** Desestruturação correta dos hooks:
+   ```typescript
+   const { online, queueSize, addToQueue, enqueue, flush, hasQueuedItems } = useOfflineSync();
+   const { online: networkOnline } = useNetworkStatus();
+   ```
+4. **Configurações de alias validadas:**
+   - `tsconfig.json`: `"baseUrl": "./", "paths": { "@/*": ["./src/*"] }`
+   - `vite.config.ts`: plugin `tsconfigPaths()` integrado
+
+**Configurações de Alias (confirmadas):**
 ```json
 // tsconfig.json
 {
   "compilerOptions": {
-    "baseUrl": "src",
-    "paths": { "@/*": ["*"] }
+    "baseUrl": "./",
+    "paths": { "@/*": ["./src/*"] }
   }
 }
 ```
 
 ```typescript
 // vite.config.ts
-import path from 'path';
-resolve: { alias: { '@': path.resolve(__dirname, 'src') } }
+import { defineConfig } from 'vite';
+import tsconfigPaths from 'vite-tsconfig-paths';
+export default defineConfig({
+  plugins: [react(), tsconfigPaths()]
+});
 ```
 
-**Resultado:** Build OK na Vercel sem erros TS2322/TS2589/TS2769/TS2307, upload de mídia funcional e tipado.
+**Resultado:** Build OK na Vercel sem erros TS2307 (módulo não encontrado) ou TS2339 (propriedades ausentes), hooks offline funcionais com fila persistente e sincronização automática.
