@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useMemoriesStore } from '@/store/memoriesStore'
-import { useOfflineSync } from '@/hooks/useOfflineSync'
-import { useNetworkStatus } from '@/hooks/useNetworkStatus'
+import useOfflineSync from '@/hooks/useOfflineSync'
+import useNetworkStatus from '@/hooks/useNetworkStatus'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -65,8 +65,8 @@ export default function Memories() {
     setTypeFilter,
     clearError 
   } = useMemoriesStore()
-  const { addToQueue, hasQueuedItems } = useOfflineSync()
-  const { isOnline } = useNetworkStatus()
+  const { online, queueSize, addToQueue, enqueue, flush } = useOfflineSync()
+  const { online: networkOnline } = useNetworkStatus()
   
   const [searchQuery, setSearchQuery] = useState('')
   const [isSemanticSearch, setIsSemanticSearch] = useState(false)
@@ -197,7 +197,7 @@ export default function Memories() {
         }
       }
       
-      if (isOnline) {
+      if (networkOnline) {
         // Try to create memory online
         const result = await createMemory(memoryData)
         if (result.success) {
@@ -211,7 +211,11 @@ export default function Memories() {
         }
       } else {
         // Add to offline queue
-        addToQueue('memory', memoryData)
+        addToQueue({
+          path: '/api/memories',
+          method: 'POST',
+          body: memoryData
+        })
         // Reset form and close dialog immediately for offline
         setFormData({ type: 'fact', content: '', importance: 3 })
         setFormErrors({})
@@ -222,7 +226,7 @@ export default function Memories() {
     } catch (error) {
       console.error('Error creating memory:', error)
       // If online creation fails, add to offline queue as fallback
-      if (isOnline) {
+      if (networkOnline) {
         const memoryData: CreateMemoryRequest = {
           type: formData.type as MemoryType,
           content: formData.content.trim(),
@@ -232,7 +236,11 @@ export default function Memories() {
             timestamp: new Date().toISOString()
           }
         }
-        addToQueue('memory', memoryData)
+        addToQueue({
+          path: '/api/memories',
+          method: 'POST',
+          body: memoryData
+        })
         
         // Reset form and close dialog even on error
         setFormData({ type: 'fact', content: '', importance: 3 })
@@ -458,7 +466,7 @@ export default function Memories() {
                   <h1 className="text-xl font-bold">Memories</h1>
                   <p className="text-sm text-muted-foreground">
                     Manage your digital consciousness
-                    {hasQueuedItems && (
+                    {queueSize > 0 && (
                       <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
                         Sync pending
                       </span>
