@@ -78,18 +78,20 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     const limitNum = Math.min(100, Math.max(1, Number(limit)))
     const offset = (pageNum - 1) * limitNum
     
-    // Build query
+    // Build query step by step to avoid deep type inference
     let query = supabaseServer
       .from('memories')
       .select('*', { count: 'exact' })
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limitNum - 1)
     
     // Add type filter if provided
     if (type && ['profile', 'preference', 'goal', 'skill', 'fact'].includes(type as string)) {
       query = query.eq('type', type)
     }
+    
+    // Apply ordering and pagination
+    query = query.order('created_at', { ascending: false })
+    query = query.range(offset, offset + limitNum - 1)
     
     const { data: memories, error, count } = await query
     
@@ -271,14 +273,15 @@ router.put('/:id', requireAuth, async (req: Request, res: Response) => {
     // Add updated_at timestamp
     updateData.updated_at = new Date().toISOString()
     
-    // Update memory (RLS will ensure user can only update their own memories)
-    const { data: memory, error } = await supabaseServer
+    // Update memory (RLS will ensure user can only update their own memories) - break query
+    let updateQuery = supabaseServer
       .from('memories')
       .update(updateData)
       .eq('id', id)
       .eq('user_id', user.id)
       .select()
-      .single()
+    
+    const { data: memory, error } = await updateQuery.single()
     
     if (error) {
       console.error('Error updating memory:', error)
@@ -323,12 +326,14 @@ router.delete('/:id', requireAuth, async (req: Request, res: Response) => {
       })
     }
     
-    // Delete memory (RLS will ensure user can only delete their own memories)
-    const { error } = await supabaseServer
+    // Delete memory (RLS will ensure user can only delete their own memories) - break query
+    let deleteQuery = supabaseServer
       .from('memories')
       .delete()
       .eq('id', id)
-      .eq('user_id', user.id)
+    deleteQuery = deleteQuery.eq('user_id', user.id)
+    
+    const { error } = await deleteQuery
     
     if (error) {
       console.error('Error deleting memory:', error)
@@ -443,12 +448,14 @@ router.post('/generate-embeddings', requireAuth, async (req: Request, res: Respo
       })
     }
     
-    // Fetch memories that belong to the user
-    const { data: memories, error: fetchError } = await supabaseServer
+    // Fetch memories that belong to the user - break query to avoid deep inference
+    let fetchQuery = supabaseServer
       .from('memories')
       .select('id, content')
       .eq('user_id', user.id)
-      .in('id', ids)
+    fetchQuery = fetchQuery.in('id', ids)
+    
+    const { data: memories, error: fetchError } = await fetchQuery
     
     if (fetchError) {
       console.error('Error fetching memories:', fetchError)
@@ -546,6 +553,7 @@ router.post('/:id/media', requireAuth, upload, async (req: Request, res: Respons
   try {
     const user = (req as AuthenticatedRequest).user
     const { id: memoryId } = req.params
+    const supabase = userScopedClient((req as AuthenticatedRequest).token)
     
     if (!req.file) {
       return res.status(400).json({
@@ -554,124 +562,132 @@ router.post('/:id/media', requireAuth, upload, async (req: Request, res: Respons
       })
     }
     
-    try {
-        // Verify memory belongs to user
-        const { data: memory, error: memoryError } = await supabaseServer
-          .from('memories')
-          .select('id')
-          .eq('id', memoryId)
-          .eq('user_id', user.id)
-          .single()
-        
-        if (memoryError || !memory) {
-          return res.status(404).json({
-            success: false,
-            error: 'Memory not found or access denied'
-          })
-        }
-        
-        // Check current media count for this memory
-        const { count: mediaCount, error: countError } = await supabaseServer
-          .from('memory_media')
-          .select('*', { count: 'exact', head: true })
-          .eq('memory_id', memoryId)
-        
-        if (countError) {
-          console.error('Error counting media:', countError)
-          return res.status(500).json({
-            success: false,
-            error: 'Failed to check media count'
-          })
-        }
-        
-        if ((mediaCount || 0) >= 5) {
-          return res.status(400).json({
-            success: false,
-            error: 'Maximum 5 files per memory allowed'
-          })
-        }
-        
-        let fileBuffer = req.file.buffer
-        let fileType: 'image' | 'audio'
-        
-        // Process image files with compression
-        if (req.file.mimetype.startsWith('image/')) {
-          fileType = 'image'
-          try {
-            // Compress image using sharp
-            fileBuffer = await sharp(req.file.buffer)
-              .resize(1920, 1080, { fit: 'inside', withoutEnlargement: true })
-              .jpeg({ quality: 85 })
-              .toBuffer()
-          } catch (compressionError) {
-            console.error('Image compression error:', compressionError)
-            // Use original buffer if compression fails
-          }
-        } else {
-          fileType = 'audio'
-        }
-        
-        // Generate unique filename
-        const fileExtension = path.extname(req.file.originalname)
-        const fileName = `${user.id}/${memoryId}/${Date.now()}-${Math.random().toString(36).substring(2)}${fileExtension}`
-        
-        // Upload to Supabase Storage
-        const { data: uploadData, error: uploadError } = await supabaseServer.storage
-          .from('media')
-          .upload(fileName, fileBuffer, {
-            contentType: req.file.mimetype,
-            upsert: false
-          })
-        
-        if (uploadError) {
-          console.error('Storage upload error:', uploadError)
-          return res.status(500).json({
-            success: false,
-            error: 'Failed to upload file'
-          })
-        }
-        
-        // Get public URL
-        const { data: urlData } = supabaseServer.storage
-          .from('media')
-          .getPublicUrl(fileName)
-        
-        // Save media record to database
-        const { data: mediaRecord, error: dbError } = await supabaseServer
-          .from('memory_media')
-          .insert({
-            memory_id: memoryId,
-            file_url: urlData.publicUrl,
-            file_type: fileType,
-            file_size: fileBuffer.length
-          })
-          .select()
-          .single()
-        
-        if (dbError) {
-          console.error('Database insert error:', dbError)
-          // Try to cleanup uploaded file
-          await supabaseServer.storage.from('media').remove([fileName])
-          return res.status(500).json({
-            success: false,
-            error: 'Failed to save media record'
-          })
-        }
-        
-        res.status(201).json({
-          success: true,
-          url: urlData.publicUrl,
-          type: fileType,
-          size: fileBuffer.length,
-          id: mediaRecord.id
-        })
-    } catch (error) {
-      console.error('Error processing media upload:', error)
-      res.status(500).json({
+    // Validate file size
+    const maxBytes = Number(process.env.MAX_FILE_SIZE || 10 * 1024 * 1024) // Default 10MB
+    if (req.file.size > maxBytes) {
+      return res.status(413).json({
         success: false,
-        error: 'Internal server error'
+        error: 'File too large'
       })
     }
+    
+    // Validate ownership of the memory - break query to avoid deep inference
+    let memoryQuery = supabase
+      .from('memories')
+      .select('id,user_id')
+      .eq('id', memoryId)
+    
+    const { data: memory, error: memoryError } = await memoryQuery.single()
+    
+    if (memoryError || memory?.user_id !== user.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden'
+      })
+    }
+    
+    // Validate file type
+    const allowedTypes = (process.env.ALLOWED_FILE_TYPES || 'image/jpeg,image/png,image/webp,audio/mpeg,audio/wav')
+      .split(',').map(s => s.trim())
+    
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      return res.status(415).json({
+        success: false,
+        error: 'Unsupported file type'
+      })
+    }
+    
+    // Check current media count for this memory - break query to avoid deep inference
+    let countQuery = supabase
+      .from('memory_media')
+      .select('*', { count: 'exact', head: true })
+    countQuery = countQuery.eq('memory_id', memoryId)
+    
+    const { count: mediaCount, error: countError } = await countQuery
+    
+    if (countError) {
+      console.error('Error counting media:', countError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to check media count'
+      })
+    }
+    
+    if ((mediaCount || 0) >= 5) {
+      return res.status(400).json({
+        success: false,
+        error: 'Maximum 5 files per memory allowed'
+      })
+    }
+    
+    let fileBuffer = req.file.buffer
+    const fileType: 'image' | 'audio' = req.file.mimetype.startsWith('image/') ? 'image' : 'audio'
+    
+    // Process image files with compression
+    if (fileType === 'image') {
+      try {
+        // Compress image using sharp
+        fileBuffer = await sharp(req.file.buffer)
+          .resize(1920, 1080, { fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 85 })
+          .toBuffer()
+      } catch (compressionError) {
+        console.error('Image compression error:', compressionError)
+        // Use original buffer if compression fails
+      }
+    }
+    
+    // Generate unique filename
+    const fileExtension = path.extname(req.file.originalname)
+    const fileName = `${user.id}/${memoryId}/${Date.now()}-${req.file.originalname}`
+    
+    // Upload to Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(process.env.SUPABASE_STORAGE_BUCKET || 'media')
+      .upload(fileName, fileBuffer, {
+        contentType: req.file.mimetype,
+        upsert: false
+      })
+    
+    if (uploadError) {
+      console.error('Storage upload error:', uploadError)
+      return res.status(500).json({
+        success: false,
+        error: uploadError.message
+      })
+    }
+    
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from(process.env.SUPABASE_STORAGE_BUCKET || 'media')
+      .getPublicUrl(uploadData.path)
+    
+    // INSERT CORRETO NA TABELA memory_media
+    const { error: insertError } = await supabase
+      .from('memory_media')
+      .insert({
+        memory_id: memoryId,
+        file_url: urlData.publicUrl,
+        file_type: fileType,
+        file_size: fileBuffer.length
+      })
+    
+    if (insertError) {
+      console.error('Database insert error:', insertError)
+      // Try to cleanup uploaded file
+      await supabase.storage.from(process.env.SUPABASE_STORAGE_BUCKET || 'media').remove([uploadData.path])
+      return res.status(500).json({
+        success: false,
+        error: insertError.message
+      })
+    }
+    
+    res.status(201).json({
+      success: true,
+      url: urlData.publicUrl,
+      type: fileType,
+      size: fileBuffer.length
+    })
   } catch (error) {
     console.error('Error in media upload endpoint:', error)
     res.status(500).json({
@@ -686,28 +702,31 @@ router.get('/:id/media', requireAuth, async (req: Request, res: Response) => {
   try {
     const user = (req as AuthenticatedRequest).user
     const { id: memoryId } = req.params
+    const supabase = userScopedClient((req as AuthenticatedRequest).token)
     
-    // Verify memory belongs to user
-    const { data: memory, error: memoryError } = await supabaseServer
+    // Verify memory belongs to user - break query to avoid deep inference
+    let verifyQuery = supabase
       .from('memories')
-      .select('id')
+      .select('id,user_id')
       .eq('id', memoryId)
-      .eq('user_id', user.id)
-      .single()
     
-    if (memoryError || !memory) {
-      return res.status(404).json({
+    const { data: memory, error: memoryError } = await verifyQuery.single()
+    
+    if (memoryError || memory?.user_id !== user.id) {
+      return res.status(403).json({
         success: false,
-        error: 'Memory not found or access denied'
+        error: 'Forbidden'
       })
     }
     
-    // Get media files for this memory
-    const { data: mediaFiles, error: mediaError } = await supabaseServer
+    // Get media files for this memory - break query to avoid deep inference
+    let mediaQuery = supabase
       .from('memory_media')
       .select('*')
       .eq('memory_id', memoryId)
-      .order('uploaded_at', { ascending: false })
+    mediaQuery = mediaQuery.order('uploaded_at', { ascending: false })
+    
+    const { data: mediaFiles, error: mediaError } = await mediaQuery
     
     if (mediaError) {
       console.error('Error fetching media:', mediaError)
