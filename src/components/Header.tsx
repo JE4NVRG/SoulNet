@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import PWAInstallBanner from '@/components/PWAInstallBanner'
+import NetworkIndicator from '@/components/NetworkIndicator'
 import {
   Brain,
   User,
@@ -99,8 +101,10 @@ export default function Header({ className = '' }: HeaderProps) {
   ]
 
   return (
-    <header className={`fixed top-0 z-50 w-full h-16 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 ${className}`}>
-      <div className="container mx-auto px-4 h-full">
+    <>
+      <PWAInstallBanner />
+      <header className={`fixed top-0 z-50 w-full h-16 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 ${className}`}>
+        <div className="container mx-auto px-4 h-full">
         <div className="flex h-full items-center justify-between">
           {/* Left side - Sidebar toggle and Logo */}
           <div className="flex items-center space-x-4">
@@ -145,6 +149,9 @@ export default function Header({ className = '' }: HeaderProps) {
 
           {/* Right side - Notifications, Theme toggle, User avatar */}
           <div className="flex items-center space-x-2">
+            {/* Network Status */}
+            <NetworkIndicator className="mr-2" />
+
             {/* Notifications */}
             <Button variant="ghost" size="sm" className="relative hidden sm:flex">
               <Bell className="h-4 w-4" />
@@ -214,9 +221,8 @@ export default function Header({ className = '' }: HeaderProps) {
             </DropdownMenu>
           </div>
         </div>
-
-
-      </div>
-    </header>
+        </div>
+      </header>
+    </>
   )
 }

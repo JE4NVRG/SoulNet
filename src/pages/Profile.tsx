@@ -4,6 +4,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useUIStore } from '@/store/uiStore'
 import { useMemoriesStore } from '@/store/memoriesStore'
 import { useAchievements } from '@/hooks/useAchievements'
+import { usePWAInstall } from '@/hooks/usePWAInstall'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,7 +30,10 @@ import {
   Shield,
   Calendar,
   Brain,
-  Trophy
+  Trophy,
+  Smartphone,
+  Bell,
+  BellOff
 } from 'lucide-react'
 
 export default function Profile() {
@@ -46,6 +50,7 @@ export default function Profile() {
     getUnlockedCount, 
     getTotalCount 
   } = useAchievements()
+  const { isInstalled, isInstallable, installApp, showInstallBanner, dismissInstallBanner } = usePWAInstall()
   
   const [isEditing, setIsEditing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -462,6 +467,93 @@ export default function Profile() {
                   </p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+          
+          {/* PWA Settings */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Smartphone className="mr-2 h-5 w-5" />
+                Progressive Web App
+              </CardTitle>
+              <CardDescription>
+                Install SoulNet as an app on your device
+              </CardDescription>
+            </CardHeader>
+            
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">App Installation</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {isInstalled 
+                      ? 'SoulNet is installed as an app on your device'
+                      : isInstallable 
+                        ? 'Install SoulNet for a better experience'
+                        : 'Installation not available in this browser'
+                    }
+                  </p>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  {isInstalled ? (
+                    <Badge variant="secondary" className="bg-green-100 text-green-800">
+                      <CheckCircle className="mr-1 h-3 w-3" />
+                      Installed
+                    </Badge>
+                  ) : isInstallable ? (
+                    <Button onClick={installApp} variant="outline">
+                      <Smartphone className="mr-2 h-4 w-4" />
+                      Install App
+                    </Button>
+                  ) : (
+                    <Badge variant="secondary" className="text-muted-foreground">
+                      Not Available
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              
+              <Separator />
+              
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">Push Notifications</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Get notified about important updates and reminders
+                  </p>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  {typeof window !== 'undefined' && 'Notification' in window ? (
+                    Notification.permission === 'granted' ? (
+                      <Badge variant="secondary" className="bg-green-100 text-green-800">
+                        <Bell className="mr-1 h-3 w-3" />
+                        Enabled
+                      </Badge>
+                    ) : Notification.permission === 'denied' ? (
+                      <Badge variant="secondary" className="bg-red-100 text-red-800">
+                        <BellOff className="mr-1 h-3 w-3" />
+                        Blocked
+                      </Badge>
+                    ) : (
+                      <Button 
+                        onClick={() => Notification.requestPermission()} 
+                        variant="outline"
+                        size="sm"
+                      >
+                        <Bell className="mr-2 h-4 w-4" />
+                        Enable
+                      </Button>
+                    )
+                  ) : (
+                    <Badge variant="secondary" className="text-muted-foreground">
+                      Not Supported
+                    </Badge>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
           

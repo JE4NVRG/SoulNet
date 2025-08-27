@@ -10,6 +10,7 @@ import memoriesRoutes from './routes/memories';
 import achievementsRoutes from './routes/achievements';
 import analyticsRoutes from './routes/analytics';
 import chatRoutes from './routes/chat';
+import pushRoutes from './routes/push';
 
 // load env
 dotenv.config();
@@ -32,6 +33,7 @@ app.use('/api/memories', memoriesRoutes);
 app.use('/api/achievements', achievementsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/push', pushRoutes);
 
 /**
  * health
