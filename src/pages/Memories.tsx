@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useMemoriesStore } from '@/store/memoriesStore'
+import { useOfflineSync } from '@/hooks/useOfflineSync'
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -28,6 +30,8 @@ import {
   Sparkles
 } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import MediaUpload from '@/components/MediaUpload'
+import MediaGallery from '@/components/MediaGallery'
 import type { CreateMemoryRequest, SemanticSearchRequest, SemanticSearchResponse } from '@/types/api'
 import type { Memory, MemoryType } from '@/types/api'
 import { apiPost } from '@/lib/apiClient'
@@ -61,6 +65,8 @@ export default function Memories() {
     setTypeFilter,
     clearError 
   } = useMemoriesStore()
+  const { addToQueue, hasQueuedItems } = useOfflineSync()
+  const { isOnline } = useNetworkStatus()
   
   const [searchQuery, setSearchQuery] = useState('')
   const [isSemanticSearch, setIsSemanticSearch] = useState(false)
@@ -76,6 +82,7 @@ export default function Memories() {
     importance: 3
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [createdMemoryId, setCreatedMemoryId] = useState<string | null>(null)
   
   // Redirect if not authenticated
   useEffect(() => {
@@ -190,15 +197,48 @@ export default function Memories() {
         }
       }
       
-      await createMemory(memoryData)
-      
-      // Reset form and close dialog
-      setFormData({ type: 'fact', content: '', importance: 3 })
-      setFormErrors({})
-      setIsCreateDialogOpen(false)
+      if (isOnline) {
+        // Try to create memory online
+        const result = await createMemory(memoryData)
+        if (result.success) {
+          // For now, we'll need to fetch the latest memory to get the ID
+          // This is a temporary solution until we modify the backend to return the memory ID
+          await fetchMemories()
+          const latestMemory = memories[0] // Assuming memories are sorted by creation date
+          if (latestMemory) {
+            setCreatedMemoryId(latestMemory.id)
+          }
+        }
+      } else {
+        // Add to offline queue
+        addToQueue('memory', memoryData)
+        // Reset form and close dialog immediately for offline
+        setFormData({ type: 'fact', content: '', importance: 3 })
+        setFormErrors({})
+        setCreatedMemoryId(null)
+        setIsCreateDialogOpen(false)
+      }
       
     } catch (error) {
       console.error('Error creating memory:', error)
+      // If online creation fails, add to offline queue as fallback
+      if (isOnline) {
+        const memoryData: CreateMemoryRequest = {
+          type: formData.type as MemoryType,
+          content: formData.content.trim(),
+          importance: formData.importance,
+          source: {
+            type: 'manual',
+            timestamp: new Date().toISOString()
+          }
+        }
+        addToQueue('memory', memoryData)
+        
+        // Reset form and close dialog even on error
+        setFormData({ type: 'fact', content: '', importance: 3 })
+        setFormErrors({})
+        setIsCreateDialogOpen(false)
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -301,80 +341,98 @@ export default function Memories() {
   
   const MemoryForm = () => (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="type">Memory Type *</Label>
-        <Select
-          value={formData.type}
-          onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
-          disabled={isSubmitting}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select memory type" />
-          </SelectTrigger>
-          <SelectContent>
-            {MEMORY_TYPES.map(type => (
-              <SelectItem key={type.value} value={type.value}>
-                {type.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {formErrors.type && (
-          <p className="text-sm text-destructive">{formErrors.type}</p>
-        )}
-      </div>
-      
-      <div className="space-y-2">
-        <Label htmlFor="content">Content *</Label>
-        <Textarea
-          id="content"
-          placeholder="Describe your memory in detail..."
-          value={formData.content}
-          onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
-          disabled={isSubmitting}
-          rows={4}
-        />
-        {formErrors.content && (
-          <p className="text-sm text-destructive">{formErrors.content}</p>
-        )}
-      </div>
-      
-      <div className="space-y-2">
-        <Label htmlFor="importance">Importance (1-5) *</Label>
-        <Select
-          value={formData.importance.toString()}
-          onValueChange={(value) => setFormData(prev => ({ ...prev, importance: parseInt(value) }))}
-          disabled={isSubmitting}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[1, 2, 3, 4, 5].map(num => (
-              <SelectItem key={num} value={num.toString()}>
-                <div className="flex items-center space-x-2">
-                  <span>{num}</span>
-                  <div className="flex">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star
-                        key={i}
-                        className={`w-3 h-3 ${
-                          i < num ? 'fill-current text-yellow-400' : 'text-gray-300'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {!createdMemoryId ? (
+        // Memory creation form
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="type">Memory Type *</Label>
+            <Select
+              value={formData.type}
+              onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
+              disabled={isSubmitting}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select memory type" />
+              </SelectTrigger>
+              <SelectContent>
+                {MEMORY_TYPES.map(type => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {formErrors.type && (
+              <p className="text-sm text-destructive">{formErrors.type}</p>
+            )}
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="content">Content *</Label>
+            <Textarea
+              id="content"
+              placeholder="Describe your memory in detail..."
+              value={formData.content}
+              onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
+              disabled={isSubmitting}
+              rows={4}
+            />
+            {formErrors.content && (
+              <p className="text-sm text-destructive">{formErrors.content}</p>
+            )}
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="importance">Importance (1-5) *</Label>
+            <Select
+              value={formData.importance.toString()}
+              onValueChange={(value) => setFormData(prev => ({ ...prev, importance: parseInt(value) }))}
+              disabled={isSubmitting}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 4, 5].map(num => (
+                  <SelectItem key={num} value={num.toString()}>
+                    <div className="flex items-center space-x-2">
+                      <span>{num}</span>
+                      <div className="flex">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star
+                            key={i}
+                            className={`w-3 h-3 ${
+                              i < num ? 'fill-current text-yellow-400' : 'text-gray-300'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
         {formErrors.importance && (
-          <p className="text-sm text-destructive">{formErrors.importance}</p>
-        )}
-      </div>
-    </div>
-  )
+               <p className="text-sm text-destructive">{formErrors.importance}</p>
+             )}
+           </div>
+         </>
+       ) : (
+         // Media upload section after memory creation
+         <div className="space-y-4">
+           <div className="text-center">
+             <h3 className="text-lg font-semibold text-green-600 mb-2">Memory Created Successfully!</h3>
+             <p className="text-sm text-muted-foreground mb-4">
+               Now you can add photos and audio files to enrich your memory.
+             </p>
+           </div>
+           <MediaUpload
+              memoryId={createdMemoryId}
+            />
+         </div>
+       )}
+     </div>
+   )
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted">
@@ -398,7 +456,14 @@ export default function Memories() {
                 <Brain className="h-6 w-6 text-primary" />
                 <div>
                   <h1 className="text-xl font-bold">Memories</h1>
-                  <p className="text-sm text-muted-foreground">Manage your digital consciousness</p>
+                  <p className="text-sm text-muted-foreground">
+                    Manage your digital consciousness
+                    {hasQueuedItems && (
+                      <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
+                        Sync pending
+                      </span>
+                    )}
+                  </p>
                 </div>
               </div>
             </div>
@@ -421,18 +486,27 @@ export default function Memories() {
                 <MemoryForm />
                 
                 <DialogFooter>
+              {!createdMemoryId ? (
+                // Buttons for memory creation
+                <>
                   <Button
+                    type="button"
                     variant="outline"
                     onClick={() => {
                       setIsCreateDialogOpen(false)
                       setFormData({ type: 'fact', content: '', importance: 3 })
                       setFormErrors({})
+                      setCreatedMemoryId(null)
                     }}
                     disabled={isSubmitting}
                   >
                     Cancel
                   </Button>
-                  <Button onClick={handleCreateMemory} disabled={isSubmitting}>
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting}
+                    onClick={handleCreateMemory}
+                  >
                     {isSubmitting ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -442,7 +516,36 @@ export default function Memories() {
                       'Create Memory'
                     )}
                   </Button>
-                </DialogFooter>
+                </>
+              ) : (
+                // Buttons for media upload phase
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setIsCreateDialogOpen(false)
+                      setFormData({ type: 'fact', content: '', importance: 3 })
+                      setFormErrors({})
+                      setCreatedMemoryId(null)
+                    }}
+                  >
+                    Skip Media Upload
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setIsCreateDialogOpen(false)
+                      setFormData({ type: 'fact', content: '', importance: 3 })
+                      setFormErrors({})
+                      setCreatedMemoryId(null)
+                    }}
+                  >
+                    Done
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
               </DialogContent>
             </Dialog>
           </div>
@@ -629,6 +732,9 @@ export default function Memories() {
                     </div>
                     
                     <p className="text-sm leading-relaxed mb-3">{memory.content}</p>
+                    
+                    {/* Media Gallery */}
+                    <MediaGallery memoryId={memory.id} />
                     
                     {isSemanticResult && (
                       <div className="flex items-center justify-end text-xs text-purple-600 dark:text-purple-400">
