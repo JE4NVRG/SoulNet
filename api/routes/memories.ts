@@ -6,6 +6,9 @@ import type { Json } from '../../src/types/database'
 import OpenAI from 'openai'
 import dotenv from 'dotenv'
 import { checkAndUnlockAchievements } from '../middleware/achievements'
+import multer from 'multer'
+import sharp from 'sharp'
+import path from 'path'
 
 dotenv.config()
 
@@ -382,7 +385,7 @@ router.post('/search', requireAuth, async (req: Request, res: Response) => {
       const threshold = parseFloat(process.env.SEMANTIC_SEARCH_THRESHOLD || '0.75')
       
       const { data: results, error } = await supabaseServer.rpc('semantic_search_memories', {
-        query_embedding: JSON.stringify(queryEmbedding),
+        query_embedding: queryEmbedding,
         match_threshold: threshold,
         match_count: limitNum,
         user_id: user.id
@@ -514,6 +517,213 @@ router.post('/generate-embeddings', requireAuth, async (req: Request, res: Respo
     })
   } catch (error) {
     console.error('Error generating embeddings:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    })
+  }
+})
+
+// Configure multer for memory storage
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760'), // 10MB default
+    files: 1 // Only one file per request
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = (process.env.ALLOWED_FILE_TYPES || 'image/jpeg,image/png,image/webp,audio/mpeg,audio/wav').split(',')
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error(`File type ${file.mimetype} not allowed`))
+    }
+  }
+}).single('file')
+
+// POST /api/memories/:id/media - Upload media files to a memory
+router.post('/:id/media', requireAuth, upload, async (req: Request, res: Response) => {
+  try {
+    const user = (req as AuthenticatedRequest).user
+    const { id: memoryId } = req.params
+    
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No file uploaded'
+      })
+    }
+    
+    try {
+        // Verify memory belongs to user
+        const { data: memory, error: memoryError } = await supabaseServer
+          .from('memories')
+          .select('id')
+          .eq('id', memoryId)
+          .eq('user_id', user.id)
+          .single()
+        
+        if (memoryError || !memory) {
+          return res.status(404).json({
+            success: false,
+            error: 'Memory not found or access denied'
+          })
+        }
+        
+        // Check current media count for this memory
+        const { count: mediaCount, error: countError } = await supabaseServer
+          .from('memory_media')
+          .select('*', { count: 'exact', head: true })
+          .eq('memory_id', memoryId)
+        
+        if (countError) {
+          console.error('Error counting media:', countError)
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to check media count'
+          })
+        }
+        
+        if ((mediaCount || 0) >= 5) {
+          return res.status(400).json({
+            success: false,
+            error: 'Maximum 5 files per memory allowed'
+          })
+        }
+        
+        let fileBuffer = req.file.buffer
+        let fileType: 'image' | 'audio'
+        
+        // Process image files with compression
+        if (req.file.mimetype.startsWith('image/')) {
+          fileType = 'image'
+          try {
+            // Compress image using sharp
+            fileBuffer = await sharp(req.file.buffer)
+              .resize(1920, 1080, { fit: 'inside', withoutEnlargement: true })
+              .jpeg({ quality: 85 })
+              .toBuffer()
+          } catch (compressionError) {
+            console.error('Image compression error:', compressionError)
+            // Use original buffer if compression fails
+          }
+        } else {
+          fileType = 'audio'
+        }
+        
+        // Generate unique filename
+        const fileExtension = path.extname(req.file.originalname)
+        const fileName = `${user.id}/${memoryId}/${Date.now()}-${Math.random().toString(36).substring(2)}${fileExtension}`
+        
+        // Upload to Supabase Storage
+        const { data: uploadData, error: uploadError } = await supabaseServer.storage
+          .from('media')
+          .upload(fileName, fileBuffer, {
+            contentType: req.file.mimetype,
+            upsert: false
+          })
+        
+        if (uploadError) {
+          console.error('Storage upload error:', uploadError)
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to upload file'
+          })
+        }
+        
+        // Get public URL
+        const { data: urlData } = supabaseServer.storage
+          .from('media')
+          .getPublicUrl(fileName)
+        
+        // Save media record to database
+        const { data: mediaRecord, error: dbError } = await supabaseServer
+          .from('memory_media')
+          .insert({
+            memory_id: memoryId,
+            file_url: urlData.publicUrl,
+            file_type: fileType,
+            file_size: fileBuffer.length
+          })
+          .select()
+          .single()
+        
+        if (dbError) {
+          console.error('Database insert error:', dbError)
+          // Try to cleanup uploaded file
+          await supabaseServer.storage.from('media').remove([fileName])
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to save media record'
+          })
+        }
+        
+        res.status(201).json({
+          success: true,
+          url: urlData.publicUrl,
+          type: fileType,
+          size: fileBuffer.length,
+          id: mediaRecord.id
+        })
+    } catch (error) {
+      console.error('Error processing media upload:', error)
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      })
+    }
+  } catch (error) {
+    console.error('Error in media upload endpoint:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    })
+  }
+})
+
+// GET /api/memories/:id/media - List media files for a memory
+router.get('/:id/media', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = (req as AuthenticatedRequest).user
+    const { id: memoryId } = req.params
+    
+    // Verify memory belongs to user
+    const { data: memory, error: memoryError } = await supabaseServer
+      .from('memories')
+      .select('id')
+      .eq('id', memoryId)
+      .eq('user_id', user.id)
+      .single()
+    
+    if (memoryError || !memory) {
+      return res.status(404).json({
+        success: false,
+        error: 'Memory not found or access denied'
+      })
+    }
+    
+    // Get media files for this memory
+    const { data: mediaFiles, error: mediaError } = await supabaseServer
+      .from('memory_media')
+      .select('*')
+      .eq('memory_id', memoryId)
+      .order('uploaded_at', { ascending: false })
+    
+    if (mediaError) {
+      console.error('Error fetching media:', mediaError)
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch media files'
+      })
+    }
+    
+    res.json({
+      success: true,
+      media: mediaFiles || [],
+      total: mediaFiles?.length || 0
+    })
+  } catch (error) {
+    console.error('Error fetching media files:', error)
     res.status(500).json({
       success: false,
       error: 'Internal server error'
