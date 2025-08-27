@@ -1,5 +1,6 @@
 import express, { type Request, type Response } from 'express'
-import { supabaseServer, getUserFromRequest } from '../../src/lib/supabaseServer'
+import { supabaseServer } from '../../src/lib/supabaseServer'
+import { requireAuth, userScopedClient } from '../middleware/auth'
 import type { CreateMemoryRequest, UpdateMemoryRequest, GetMemoriesRequest, MemoryResponse, MemoriesListResponse, SentimentAnalysis, SemanticSearchRequest, SemanticSearchResponse, GenerateEmbeddingsRequest } from '../../src/types/api'
 import type { Json } from '../../src/types/database'
 import OpenAI from 'openai'
@@ -59,32 +60,9 @@ Não inclua explicações, apenas o JSON.`
   }
 }
 
-type AuthenticatedRequest = Request & { user: { id: string; email: string } }
+type AuthenticatedRequest = Request & { user: { id: string; email: string }; token: string }
 
 const router = express.Router()
-
-// Middleware to verify authentication
-const requireAuth = async (req: Request, res: Response, next: express.NextFunction) => {
-  try {
-    const { user, error } = await getUserFromRequest(req)
-    
-    if (error || !user) {
-      return res.status(401).json({
-        success: false,
-        error: 'Unauthorized'
-      })
-    }
-    
-    // Attach user to request object
-    (req as AuthenticatedRequest).user = user
-    next()
-  } catch {
-    return res.status(401).json({
-      success: false,
-      error: 'Authentication failed'
-    })
-  }
-}
 
 // GET /api/memories - List memories with pagination and filtering
 router.get('/', requireAuth, async (req: Request, res: Response) => {

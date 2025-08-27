@@ -8,6 +8,8 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth';
 import memoriesRoutes from './routes/memories';
 import achievementsRoutes from './routes/achievements';
+import analyticsRoutes from './routes/analytics';
+import chatRoutes from './routes/chat';
 
 // load env
 dotenv.config();
@@ -15,7 +17,10 @@ dotenv.config();
 
 const app: express.Application = express();
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' ? false : 'http://localhost:5173',
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -25,6 +30,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/memories', memoriesRoutes);
 app.use('/api/achievements', achievementsRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/chat', chatRoutes);
 
 /**
  * health

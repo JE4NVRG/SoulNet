@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuthStore } from '@/store/authStore'
 import type { Achievement, AchievementDefinition, AchievementResponse, AchievementType } from '@/types/api'
 import { toast } from 'sonner'
+import { apiGet } from '@/lib/apiClient'
 
 const ACHIEVEMENT_DEFINITIONS: AchievementDefinition[] = [
   {
@@ -51,18 +52,7 @@ export function useAchievements() {
     setError(null)
 
     try {
-      const response = await fetch('/api/achievements', {
-        headers: {
-          'Authorization': `Bearer ${session?.access_token}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch achievements')
-      }
-
-      const data: AchievementResponse = await response.json()
+      const data: AchievementResponse = await apiGet('/api/achievements')
       setAchievements(data.achievements)
     } catch (err) {
       console.error('Error fetching achievements:', err)

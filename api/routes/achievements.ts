@@ -1,12 +1,9 @@
 import express, { type Request, type Response } from 'express';
-import { createClient } from '@supabase/supabase-js';
+import { requireAuth } from '../middleware/auth';
 
 const router = express.Router();
 
-// Initialize Supabase client
-const supabaseUrl = process.env.VITE_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+type AuthenticatedRequest = Request & { user: { id: string; email: string }; token: string };
 
 // Achievement definitions with metadata
 const ACHIEVEMENT_DEFINITIONS = {
@@ -36,27 +33,14 @@ const ACHIEVEMENT_DEFINITIONS = {
  * GET /api/achievements
  * Lista todas as conquistas do usuário autenticado
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
-    // Get user from authorization header
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        error: 'Token de autorização necessário'
-      });
-    }
-
-    const token = authHeader.substring(7);
+    const user = (req as AuthenticatedRequest).user;
+    const token = (req as AuthenticatedRequest).token;
     
-    // Verify token and get user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) {
-      return res.status(401).json({
-        success: false,
-        error: 'Token inválido'
-      });
-    }
+    // Use user-scoped client for RLS
+    const { userScopedClient } = await import('../middleware/auth');
+    const supabase = userScopedClient(token);
 
     // Get user's achievements
     const { data: achievements, error } = await supabase

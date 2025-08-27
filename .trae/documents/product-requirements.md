@@ -1,5 +1,5 @@
 # SoulNet - Rede das Consciências Digitais
-## Documento de Requisitos do Produto - Versão 3.0
+## Documento de Requisitos do Produto - Versão 3.1
 
 ## 1. Visão Geral do Produto
 
@@ -160,6 +160,44 @@ O produto é desktop-first com adaptação mobile completa. Layout responsivo co
 7. ✅ Toast é exibido instantaneamente ao desbloquear nova conquista
 
 **Fora de Escopo:**
-- Estatísticas avançadas (Sprint 3.5)
 - Marketplace ou recompensas além dos badges
 - Compartilhamento de conquistas sociais (Fase 5)
+
+### Sprint 3.5 — Estatísticas Pessoais (Analytics)
+
+**Objetivo:** Oferecer ao usuário uma visão clara e visual de sua jornada no SoulNet, com métricas, gráficos interativos e streaks de engajamento.
+
+**Escopo:**
+
+**Backend (Express API):**
+- Endpoint `GET /api/analytics` que retorna dados agregados do usuário autenticado:
+  * Total de memórias
+  * Memórias por mês/ano
+  * Distribuição por type (profile, goal, etc)
+  * Distribuição por sentiment (positive, neutral, negative)
+  * Dias consecutivos ativos (streak)
+- Query otimizada usando GROUP BY + filtros por user_id
+- Middleware requireAuth aplicado
+
+**Frontend:**
+- Página `/analytics` com gráficos interativos usando Chart.js + react-chartjs-2:
+  * Line Chart → memórias por mês
+  * Pie Chart → distribuição por sentimento
+  * Bar Chart → distribuição por tipo de memória
+  * Counter Card → streak de dias consecutivos
+- Dashboard responsivo (mobile/desktop)
+- Loading skeletons para gráficos
+- Tooltips nos gráficos com detalhes
+- Cores consistentes: positivo=verde, neutro=cinza, negativo=vermelho
+
+**Critérios de Aceitação:**
+1. ✅ Endpoint retorna dados corretos agregados por usuário
+2. ✅ Página `/analytics` exibe ao menos 3 gráficos + 1 contador de streak
+3. ✅ Gráficos são responsivos e interativos (tooltip, legenda)
+4. ✅ Dashboard carrega em < 2 segundos com até 10k memórias
+5. ✅ Streak é calculado corretamente
+
+**Fora de Escopo:**
+- Exportação dos dados (Fase 4)
+- Comparação entre usuários (Fase 5)
+- Insights automáticos da IA (Fase futura)

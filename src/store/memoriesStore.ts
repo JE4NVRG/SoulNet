@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { Memory, CreateMemoryRequest, UpdateMemoryRequest, GetMemoriesRequest, MemoryType, MemoryResponse } from '../types/api'
 import { toast } from 'sonner'
 import { Trophy } from 'lucide-react'
+import { apiGet, apiPost, apiPut, apiDelete } from '../lib/apiClient'
 
 interface MemoriesState {
   // State
@@ -50,19 +51,7 @@ export const useMemoriesStore = create<MemoriesState>()((set, get) => ({
       if (params?.limit) queryParams.append('limit', params.limit.toString())
       if (params?.type) queryParams.append('type', params.type)
       
-      const response = await fetch(`/api/memories?${queryParams.toString()}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include'
-      })
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      
-      const data = await response.json()
+      const data = await apiGet('/api/memories', Object.fromEntries(queryParams))
       
       set({ 
         memories: data.memories || [],
@@ -83,21 +72,7 @@ export const useMemoriesStore = create<MemoriesState>()((set, get) => ({
     set({ loading: true, error: null })
     
     try {
-      const response = await fetch('/api/memories', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(memory)
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
-      }
-      
-      const data: MemoryResponse = await response.json()
+      const data: MemoryResponse = await apiPost('/api/memories', memory)
       
       // Show achievement notifications if any new achievements were unlocked
       if (data.newAchievements && data.newAchievements.length > 0) {
@@ -133,21 +108,7 @@ export const useMemoriesStore = create<MemoriesState>()((set, get) => ({
     set({ loading: true, error: null })
     
     try {
-      const response = await fetch(`/api/memories/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(memory)
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
-      }
-      
-      await response.json()
+      await apiPut(`/api/memories/${id}`, memory)
       
       // Refresh memories list after update
       await get().fetchMemories({ type: get().currentType || undefined })
@@ -166,18 +127,7 @@ export const useMemoriesStore = create<MemoriesState>()((set, get) => ({
     set({ loading: true, error: null })
     
     try {
-      const response = await fetch(`/api/memories/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include'
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
-      }
+      await apiDelete(`/api/memories/${id}`)
       
       // Remove memory from local state
       set((state) => ({

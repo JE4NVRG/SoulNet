@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useAuthStore } from './authStore';
+import { apiPost } from '../lib/apiClient';
 
 export interface ChatMessage {
   id: string;
@@ -55,27 +56,8 @@ export const useChatStore = create<ChatState>()(persist(
         // Add user message immediately
         addMessage({ role: 'user', content });
         
-        // Get auth token
-        const { session } = useAuthStore.getState();
-        if (!session?.access_token) {
-          throw new Error('Usuário não autenticado');
-        }
-        
         // Send to API
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ message: content }),
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Erro na API: ${response.status}`);
-        }
-        
-        const data = await response.json();
+        const data = await apiPost('/api/chat', { message: content });
         
         // Add AI response
         addMessage({ role: 'consciousness', content: data.reply });

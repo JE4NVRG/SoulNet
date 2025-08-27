@@ -30,6 +30,7 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { CreateMemoryRequest, SemanticSearchRequest, SemanticSearchResponse } from '@/types/api'
 import type { Memory, MemoryType } from '@/types/api'
+import { apiPost } from '@/lib/apiClient'
 
 const MEMORY_TYPES = [
   { value: 'profile', label: 'Profile' },
@@ -99,23 +100,10 @@ export default function Memories() {
     
     setIsSearching(true)
     try {
-      const response = await fetch('/api/memories/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          query: query.trim(),
-          k: 50
-        } as SemanticSearchRequest)
-      })
-      
-      if (!response.ok) {
-        throw new Error('Semantic search failed')
-      }
-      
-      const data: SemanticSearchResponse = await response.json()
+      const data: SemanticSearchResponse = await apiPost('/api/memories/search', {
+        query: query.trim(),
+        k: 50
+      } as SemanticSearchRequest)
       setSemanticResults(data.memories)
     } catch (error) {
       console.error('Semantic search error:', error)
