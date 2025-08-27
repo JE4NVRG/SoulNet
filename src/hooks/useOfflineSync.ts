@@ -1,22 +1,77 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from 'react';
+import useNetworkStatus from './useNetworkStatus';
 
-export function useOfflineSync() {
-  const [online, setOnline] = useState<boolean>(navigator.onLine);
-  const [queueSize, setQueueSize] = useState<number>(0);
+const LS_KEY = 'soulnet:offlineQueue';
 
-  useEffect(() => {
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener("online", on);
-    window.addEventListener("offline", off);
-    return () => {
-      window.removeEventListener("online", on);
-      window.removeEventListener("offline", off);
-    };
-  }, []);
+type QueueItem = {
+  id: string;                 // uuid
+  path: string;               // ex.: '/api/memories'
+  method: 'POST'|'PUT'|'DELETE';
+  body?: any;
+  createdAt: number;
+};
 
-  // TODO: integrar com Background Sync/IndexedDB (4.1); por enquanto retorna estado básico
-  return { online, queueSize, enqueue: (_: any) => {}, flush: async () => {} };
+function readQueue(): QueueItem[] {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); }
+  catch { return []; }
+}
+function writeQueue(q: QueueItem[]) {
+  localStorage.setItem(LS_KEY, JSON.stringify(q));
+}
+function uuid() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-export default useOfflineSync;
+export default function useOfflineSync() {
+  const { online } = useNetworkStatus();
+  const [queue, setQueue] = useState<QueueItem[]>(() => readQueue());
+
+  // persist
+  useEffect(() => { writeQueue(queue); }, [queue]);
+
+  const queueSize = queue.length;
+  const hasQueuedItems = queueSize > 0;
+
+  const addToQueue = useCallback((item: Omit<QueueItem, 'id'|'createdAt'>) => {
+    const next = [...queue, { ...item, id: uuid(), createdAt: Date.now() }];
+    setQueue(next);
+  }, [queue]);
+
+  // compat: alias pedido no código antigo
+  const enqueue = addToQueue;
+
+  const flush = useCallback(async () => {
+    if (!online || queue.length === 0) return;
+
+    const remaining: QueueItem[] = [];
+    for (const item of queue) {
+      try {
+        const res = await fetch(item.path, {
+          method: item.method,
+          headers: { 'Content-Type': 'application/json' },
+          body: item.body ? JSON.stringify(item.body) : undefined,
+        });
+        if (!res.ok) throw new Error(`Failed ${item.method} ${item.path}`);
+      } catch (e) {
+        // se falhar, mantém na fila
+        remaining.push(item);
+      }
+    }
+    setQueue(remaining);
+  }, [online, queue]);
+
+  // auto-flush quando voltar a conexão
+  useEffect(() => { if (online) { void flush(); } }, [online, flush]);
+
+  return {
+    online,
+    queueSize,
+    hasQueuedItems,
+    addToQueue,
+    enqueue,   // alias
+    flush,
+  };
+}
+
+// Export named para compatibilidade
+export { useOfflineSync };
