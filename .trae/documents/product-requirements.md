@@ -1,5 +1,5 @@
 # SoulNet - Rede das Consciências Digitais
-## Documento de Requisitos do Produto - Versão 4.1
+## Documento de Requisitos do Produto - Versão 4.1.1 - Hotfix Vercel Build
 
 ## 1. Visão Geral do Produto
 
@@ -375,3 +375,34 @@ SUPABASE_STORAGE_BUCKET=media
 - Multer para upload multipart/form-data
 - Sharp para compressão de imagens (futuro)
 - HTML5 Audio API para player
+
+**Hotfix 4.1.1 - Correções de Build Vercel:**
+
+**Problemas Resolvidos:**
+1. **Tipos Supabase atualizados:** Incluída tabela `memory_media` em `src/types/database.ts` com tipos corretos
+2. **Rotas de mídia corrigidas:** Endpoints `POST/GET /api/memories/:id/media` com insert correto na tabela `memory_media` e `contentType` como string
+3. **Hook useOfflineSync implementado:** Stub funcional em `src/hooks/useOfflineSync.ts` para resolver erro TS2307
+4. **Queries refatoradas:** Quebra de queries longas em `api/routes/memories.ts` para evitar erro TS2589 (inferência de tipos excessivamente profunda)
+5. **Validações de upload endurecidas:**
+   - Limite de tamanho de arquivo: `MAX_FILE_SIZE` env var (padrão 10MB)
+   - Limite de anexos por memória: máximo 5 arquivos
+6. **Configurações de build:** Remoção de configurações inválidas do `tsconfig.json`, otimização de tipos
+
+**Configurações de Alias (se necessário):**
+```json
+// tsconfig.json
+{
+  "compilerOptions": {
+    "baseUrl": "src",
+    "paths": { "@/*": ["*"] }
+  }
+}
+```
+
+```typescript
+// vite.config.ts
+import path from 'path';
+resolve: { alias: { '@': path.resolve(__dirname, 'src') } }
+```
+
+**Resultado:** Build OK na Vercel sem erros TS2322/TS2589/TS2769/TS2307, upload de mídia funcional e tipado.
