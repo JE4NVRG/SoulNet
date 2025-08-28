@@ -1,9 +1,13 @@
 /**
- * Vercel deploy entry handler, for serverless deployment, please don't modify this file
+ * Vercel Serverless Functions entry point
+ * Converts Express app to serverless handler using serverless-http
  */
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import app from './app.js';
+import serverless from 'serverless-http';
+import app from './app';
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
-  return app(req, res);
-}
+// Convert Express app to serverless handler
+const handler = serverless(app, {
+  binary: ['image/*', 'audio/*', 'video/*', 'application/octet-stream']
+});
+
+export default handler;

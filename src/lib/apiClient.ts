@@ -30,21 +30,41 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
       headers,
     });
 
-    // Tratar erro 401 (Unauthorized)
-    if (response.status === 401) {
-      // Exibir toast amigável
-      toast.error('Sua sessão expirou. Entre novamente.', {
+    // Tratar erros HTTP (status >= 400)
+    if (response.status >= 400) {
+      let errorMessage = 'Erro no servidor. Tente novamente.';
+      
+      try {
+        const errorData = await response.json();
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+      } catch {
+        // Se falhar ao parsear JSON, usar mensagem padrão
+        console.warn('Failed to parse error response as JSON');
+      }
+      
+      // Tratar erro 401 especificamente
+      if (response.status === 401) {
+        toast.error('Sua sessão expirou. Entre novamente.', {
+          duration: 4000,
+        });
+        
+        // Limpar sessão do Supabase
+        await supabase.auth.signOut();
+        
+        // Redirecionar para login
+        window.location.href = '/login?reason=unauthorized';
+        
+        return Promise.reject(new Error('Unauthorized'));
+      }
+      
+      // Para outros erros, exibir toast com mensagem
+      toast.error(errorMessage, {
         duration: 4000,
       });
       
-      // Limpar sessão do Supabase
-      await supabase.auth.signOut();
-      
-      // Redirecionar para login
-      window.location.href = '/login?reason=unauthorized';
-      
-      // Rejeitar a promise
-      return Promise.reject(new Error('Unauthorized'));
+      return Promise.reject(new Error(errorMessage));
     }
 
     return response;

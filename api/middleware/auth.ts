@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { createClient } from '@supabase/supabase-js';
+import { getEnvConfig } from '../utils/assertEnv';
+import { sendUnauthorized } from '../utils/apiResponse';
 
 // Extend Express Request interface to include user and token
 declare global {
@@ -14,10 +16,13 @@ declare global {
   }
 }
 
+// Get validated environment configuration
+const envConfig = getEnvConfig();
+
 // Create Supabase admin client for token validation
 const supabaseAdmin = createClient(
-  process.env.VITE_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  envConfig.VITE_SUPABASE_URL,
+  envConfig.SUPABASE_SERVICE_ROLE_KEY
 );
 
 /**
@@ -34,7 +39,7 @@ export async function requireAuth(
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
     
     if (!token) {
-      res.status(401).json({ error: 'Missing token' });
+      sendUnauthorized(res, 'Missing authorization token');
       return;
     }
 
@@ -42,7 +47,8 @@ export async function requireAuth(
     const { data, error } = await supabaseAdmin.auth.getUser(token);
     
     if (error || !data?.user) {
-      res.status(401).json({ error: 'Invalid token' });
+      console.error('[AUTH ERROR] Token validation failed:', error?.message);
+      sendUnauthorized(res, 'Invalid or expired token');
       return;
     }
 
@@ -55,8 +61,8 @@ export async function requireAuth(
     
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
-    res.status(401).json({ error: 'Unauthorized' });
+    console.error('[AUTH MIDDLEWARE ERROR]', error);
+    sendUnauthorized(res, 'Authentication failed');
   }
 }
 
@@ -65,9 +71,10 @@ export async function requireAuth(
  * Uses ANON key + Authorization header to respect Row Level Security
  */
 export function userScopedClient(token: string) {
+  const envConfig = getEnvConfig();
   return createClient(
-    process.env.VITE_SUPABASE_URL!,
-    process.env.VITE_SUPABASE_ANON_KEY!,
+    envConfig.VITE_SUPABASE_URL,
+    envConfig.VITE_SUPABASE_ANON_KEY,
     {
       global: {
         headers: {

@@ -1,5 +1,28 @@
 # PRD - Roadmap de Melhorias SoulNet
 
+## Versão 4.1.3 - Hotfix Produção (Vercel) 🔧
+**Status: ✅ Concluído | Data: Janeiro 2025**
+
+**Objetivo**: Corrigir erros 500 no `/api/*` e "Unexpected token ... not valid JSON" no frontend em produção Vercel.
+
+**Mudanças Implementadas**:
+- ✅ **Backend convertido para Serverless Functions**: Express app migrado para `api/index.ts` com `serverless-http`
+- ✅ **Respostas padronizadas em JSON**: Todas rotas `/api/*` retornam `{ok, data}` ou `{error, code}`
+- ✅ **Validação de ENVs obrigatórias**: Util `assertEnv()` com fail-fast para `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- ✅ **Service Worker fixado**: Arquivo em `/public/sw.js` com registro correto `{scope: '/'}`
+- ✅ **Tratamento de erro robusto**: Frontend `apiFetch` com fallback para "Erro no servidor. Tente novamente."
+- ✅ **Middleware de autenticação**: `requireAuth` validando `Authorization: Bearer <token>` do Supabase
+- ✅ **Middleware de erro global**: Console.error detalhado + resposta JSON padronizada
+
+**Critérios de Aceitação Validados**:
+- ✅ `/api/health` responde 200 com JSON `{ok: true, ts}` em produção
+- ✅ Nenhum erro "Unexpected token ... not valid JSON" no frontend
+- ✅ `/api/memories?limit=10` retorna 200 ou 401, nunca 500 com HTML
+- ✅ Service Worker registrado corretamente com `scope: '/'` no Chrome DevTools
+- ✅ Variáveis de ambiente ausentes geram log `[ENV MISSING]` no server e resposta JSON `{error}`
+
+---
+
 ## 1. Visão Geral do Projeto
 
 O SoulNet é uma plataforma de memórias pessoais que permite aos usuários capturar, organizar e refletir sobre suas experiências de vida. A versão atual (v1.0) oferece funcionalidades básicas completas e está pronta para evoluir com recursos avançados.
